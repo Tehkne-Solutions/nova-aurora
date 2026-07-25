@@ -1,10 +1,8 @@
 name: CI
-
 on:
   pull_request:
   push:
     branches: [main]
-
 jobs:
   validate:
     runs-on: ubuntu-latest
@@ -15,27 +13,49 @@ jobs:
           POSTGRES_DB: nova_aurora
           POSTGRES_USER: nova_aurora
           POSTGRES_PASSWORD: nova_aurora
-        ports:
-          - 5432:5432
+        ports: ["5432:5432"]
         options: >-
           --health-cmd "pg_isready -U nova_aurora -d nova_aurora"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 10
+          --health-interval 5s --health-timeout 5s --health-retries 10
+      redis:
+        image: redis:8-alpine
+        ports: ["6379:6379"]
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s --health-timeout 5s --health-retries 10
     env:
       DATABASE_URL: postgresql://nova_aurora:nova_aurora@localhost:5432/nova_aurora
+      REDIS_URL: redis://localhost:6379
       AUTH_SECRET: 12345678901234567890123456789012
       INTERNAL_API_TOKEN: 123456789012345678901234
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
-        with:
-          version: 10.13.1
+        with: { version: 10.13.1 }
       - uses: actions/setup-node@v4
-        with:
-          node-version: 22
+        with: { node-version: 22 }
       - run: pnpm install --no-frozen-lockfile
       - run: pnpm db:migrate
-      - run: pnpm typecheck
-      - run: pnpm test
+      - name: Typecheck
+        shell: bash
+        run: |
+          set -o pipefail
+          pnpm typecheck 2>&1 | tee typecheck.log
+      - name: Upload typecheck diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: typecheck-diagnostics
+          path: typecheck.log
+      - name: Test
+        shell: bash
+        run: |
+          set -o pipefail
+          pnpm test 2>&1 | tee test.log
+      - name: Upload test diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-diagnostics
+          path: test.log
       - run: pnpm build

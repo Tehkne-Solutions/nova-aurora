@@ -12,9 +12,12 @@
   "dependencies": {
     "@fastify/cors": "^11",
     "@fastify/sensible": "^6",
+    "@fastify/websocket": "^11",
     "@nova-aurora/database": "workspace:*",
     "@nova-aurora/ledger": "workspace:*",
+    "bullmq": "^5",
     "fastify": "^5",
+    "ioredis": "^5",
     "postgres": "^3.4",
     "zod": "^4"
   },

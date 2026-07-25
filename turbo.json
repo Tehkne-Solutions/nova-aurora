@@ -1,7 +1,19 @@
 {
   "$schema": "https://turborepo.dev/schema.json",
+  "globalEnv": [
+    "DATABASE_URL",
+    "REDIS_URL",
+    "AUTH_SECRET",
+    "INTERNAL_API_TOKEN",
+    "NEXT_PUBLIC_API_URL",
+    "API_PORT",
+    "ECONOMY_TICK_SECONDS"
+  ],
   "tasks": {
-    "dev": { "cache": false, "persistent": true },
+    "dev": {
+      "cache": false,
+      "persistent": true
+    },
     "build": {
       "dependsOn": ["^build"],
       "outputs": ["dist/**", ".next/**", "!.next/cache/**"]
