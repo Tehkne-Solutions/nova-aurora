@@ -6,6 +6,23 @@ import { useAuth } from "../auth-provider";
 import styles from "./login.module.css";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
+const PROTECTED_DESTINATIONS = [
+  "/game",
+  "/business",
+  "/marketplace",
+  "/management",
+  "/governance",
+  "/municipality",
+  "/dashboard",
+  "/account"
+] as const;
+type ProtectedDestination = typeof PROTECTED_DESTINATIONS[number];
+
+function safeDestination(value: string | null): ProtectedDestination {
+  return value && PROTECTED_DESTINATIONS.includes(value as ProtectedDestination)
+    ? value as ProtectedDestination
+    : "/game";
+}
 
 type AuthResult = Readonly<{
   token: string;
@@ -58,10 +75,7 @@ export default function LoginPage() {
       }
       setSession(payload.token, payload.identity);
       const requested = new URLSearchParams(window.location.search).get("returnTo");
-      const destination = requested?.startsWith("/") && !requested.startsWith("//")
-        ? requested
-        : "/game";
-      router.replace(destination);
+      router.replace(safeDestination(requested));
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Falha de autenticação.");
     } finally {
