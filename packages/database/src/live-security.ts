@@ -6,6 +6,23 @@ function sha256(value: string): string {
 }
 
 export class LiveSecurityService extends AuthSecurityService {
+  async assertProductionSecurity(): Promise<void> {
+    if (process.env.NODE_ENV !== "production") return;
+    const rows = await this.sql`
+      SELECT email FROM users
+      WHERE (email='alice@nova-aurora.local'
+          AND password_hash=crypt('Aurora@2026',password_hash))
+         OR (email='bob@nova-aurora.local'
+          AND password_hash=crypt('Horizonte@2026',password_hash))
+    `;
+    if (rows.length > 0) {
+      throw new Error(
+        "Deploy bloqueado: credenciais demonstrativas ainda estão ativas. "
+        + "Altere as senhas antes de iniciar em produção."
+      );
+    }
+  }
+
   async createRealtimeTicket(identity: AuthenticatedIdentity): Promise<Readonly<{
     ticket: string;
     expiresAt: string;
