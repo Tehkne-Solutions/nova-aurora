@@ -42,6 +42,7 @@ export class ProductionRepository extends EconomyRepositoryBase {
       `;
       for (let index = 0; index < inputs.length; index += 1) {
         const row = inputs[index];
+        if (!row) continue;
         await this.reserveInventory(tx, {
           ownerId: input.ownerId,
           itemId: String(row.item_id),
