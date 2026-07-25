@@ -7,7 +7,7 @@ jogadores e uma camada econômica auditável.
 
 ## Vertical slice atual
 
-`Centro de Empregos → colheita → farinha → pão → oferta → compra → ledger`
+`Centro de Empregos → minijogo de colheita → farinha → pão → oferta → compra → ledger`
 
 ## Stack
 
@@ -46,8 +46,10 @@ Acesse:
 - transactional outbox;
 - eventos em tempo real;
 - quatro distritos persistentes;
-- viagem e estado do jogador;
+- personagem e deslocamento animado;
+- NPCs e diálogos contextuais;
 - trabalhos públicos;
+- minijogo agrícola validado no servidor;
 - onboarding baseado em fatos econômicos.
 
 ## Documentação
@@ -55,6 +57,7 @@ Acesse:
 - `docs/ARCHITECTURE.md`;
 - `docs/SPRINT_1_PERSISTENT_ECONOMY.md`;
 - `docs/SPRINT_2_MARKET_PRODUCTION_CORE.md`;
-- `docs/SPRINT_3_CITY_GAMEPLAY.md`.
+- `docs/SPRINT_3_CITY_GAMEPLAY.md`;
+- `docs/SPRINT_4_GAMEPLAY_EXPERIENCE.md`.
 
 **Tehkné Solutions**
