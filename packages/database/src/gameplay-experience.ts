@@ -30,6 +30,23 @@ function challengeFromSessionId(sessionId: string): readonly HarvestAction[] {
   );
 }
 
+function parseHarvestActions(value: unknown): HarvestAction[] {
+  let parsed = value;
+  if (typeof parsed === "string") {
+    try {
+      parsed = JSON.parse(parsed) as unknown;
+    } catch {
+      return [];
+    }
+  }
+  if (!Array.isArray(parsed)) return [];
+  return parsed
+    .map((action) => String(action))
+    .filter((action): action is HarvestAction =>
+      HARVEST_ACTIONS.includes(action as HarvestAction)
+    );
+}
+
 export class GameplayExperienceService extends EconomyRepositoryBase {
   async experienceState(ownerId: string): Promise<Readonly<{
     avatarCode: string;
@@ -67,9 +84,11 @@ export class GameplayExperienceService extends EconomyRepositoryBase {
         roleTitle: String(row.role_title),
         avatar: String(row.avatar),
         locationCode: String(row.location_code),
-        dialogue: Array.isArray(row.dialogue)
-          ? row.dialogue.map((line) => String(line))
-          : []
+        dialogue: typeof row.dialogue === "string"
+          ? parseHarvestDialogue(row.dialogue)
+          : Array.isArray(row.dialogue)
+            ? row.dialogue.map((line) => String(line))
+            : []
       })),
       activeHarvest: sessionRows[0]
         ? this.mapHarvestSession(sessionRows[0])
@@ -164,9 +183,10 @@ export class GameplayExperienceService extends EconomyRepositoryBase {
         throw new Error("A sessão expirou. Inicie uma nova colheita.");
       }
 
-      const challenge = Array.isArray(session.challenge)
-        ? session.challenge.map((action) => String(action) as HarvestAction)
-        : [];
+      const challenge = parseHarvestActions(session.challenge);
+      if (challenge.length !== 7) {
+        throw new Error("Desafio de colheita corrompido.");
+      }
       const correct = challenge.reduce(
         (total, action, index) => total + (input.sequence[index] === action ? 1 : 0),
         0
@@ -228,9 +248,7 @@ export class GameplayExperienceService extends EconomyRepositoryBase {
   private mapHarvestSession(row: Record<string, unknown>): HarvestSessionView {
     return {
       id: String(row.id),
-      challenge: Array.isArray(row.challenge)
-        ? row.challenge.map((action) => String(action) as HarvestAction)
-        : [],
+      challenge: parseHarvestActions(row.challenge),
       score: Number(row.score),
       status: row.status as HarvestSessionView["status"],
       startedAt: new Date(String(row.started_at)).toISOString(),
@@ -239,5 +257,14 @@ export class GameplayExperienceService extends EconomyRepositoryBase {
         ? new Date(String(row.completed_at)).toISOString()
         : null
     };
+  }
+}
+
+function parseHarvestDialogue(value: string): string[] {
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    return Array.isArray(parsed) ? parsed.map((line) => String(line)) : [];
+  } catch {
+    return [];
   }
 }
