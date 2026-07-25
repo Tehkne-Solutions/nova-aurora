@@ -32,6 +32,8 @@ jobs:
       INTERNAL_API_TOKEN: 123456789012345678901234
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref || github.ref_name }}
       - uses: pnpm/action-setup@v4
         with: { version: 10.13.1 }
       - uses: actions/setup-node@v4
@@ -61,12 +63,10 @@ jobs:
             .sprint8/chunk10a .sprint8/chunk10b \
             .sprint8/chunk11a .sprint8/chunk11b .sprint8/chunk12 \
             > /tmp/sprint8.b64
-          wc -c /tmp/sprint8.b64
           echo "e8c7374f70e34c8585d76c673825e19efb313efb8b9571ff7e9eb1db2b36be5a  /tmp/sprint8.b64" | sha256sum -c -
       - name: Decode Sprint 8 archive
         run: |
           base64 -d /tmp/sprint8.b64 > /tmp/sprint8.zip
-          wc -c /tmp/sprint8.zip
           echo "3fcbc4d112e2faedb98563e0dcd0d7d2ff524cca1bfe98d6e11a45426e18d2bf  /tmp/sprint8.zip" | sha256sum -c -
           test "$(wc -c < /tmp/sprint8.zip)" -eq 26793
           unzip -t /tmp/sprint8.zip
@@ -79,7 +79,6 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -A
-          git status --short
           git commit -m "feat: implement regional economy and business management"
       - name: Push Sprint 8 source
         run: git push origin HEAD:agent/regional-economy-business-management
