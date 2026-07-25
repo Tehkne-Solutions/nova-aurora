@@ -43,7 +43,7 @@ export abstract class EconomyRepositoryBase {
     operation: (tx: Tx) => Promise<T>
   ): Promise<T> {
     const hash = requestHash(request);
-    return this.sql.begin("isolation level serializable", async (tx) => {
+    const result = await this.sql.begin("isolation level serializable", async (tx) => {
       await tx`SELECT pg_advisory_xact_lock(hashtext(${key}))`;
       const old = await tx`SELECT request_hash,response FROM idempotency_records WHERE key=${key} FOR UPDATE`;
       if (old[0]) {
@@ -59,6 +59,7 @@ export abstract class EconomyRepositoryBase {
       `;
       return response;
     });
+    return result as T;
   }
 
   protected async reserveInventory(tx: Tx, input: {
@@ -84,6 +85,7 @@ export abstract class EconomyRepositoryBase {
     let remaining = input.quantityMinor;
     for (let index = 0; index < lots.length && remaining > 0; index += 1) {
       const lot = lots[index];
+      if (!lot) break;
       const availableInLot = Number(lot.quantity_minor) - Number(lot.reserved_minor);
       const take = Math.min(remaining, availableInLot);
       await tx`UPDATE inventory_lots SET reserved_minor=reserved_minor+${take} WHERE id=${String(lot.id)}::uuid`;
@@ -201,9 +203,13 @@ export abstract class EconomyRepositoryBase {
 
     const resolved: { id: string; amount: number; memo: string }[] = [];
     for (const entry of input.entries) {
-      const rows = entry.accountId
-        ? await tx`SELECT id FROM ledger_accounts WHERE id=${entry.accountId}::uuid`
-        : await tx`SELECT id FROM ledger_accounts WHERE code=${entry.accountCode}`;
+      let rows;
+      if (entry.accountId) {
+        rows = await tx`SELECT id FROM ledger_accounts WHERE id=${entry.accountId}::uuid`;
+      } else {
+        if (!entry.accountCode) throw new Error("Conta do ledger não informada.");
+        rows = await tx`SELECT id FROM ledger_accounts WHERE code=${entry.accountCode}`;
+      }
       if (!rows[0]) throw new Error("Conta do ledger ausente.");
       resolved.push({ id: String(rows[0].id), amount: entry.amount, memo: entry.memo });
     }
