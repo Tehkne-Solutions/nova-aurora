@@ -15,6 +15,15 @@ export async function closeDb(): Promise<void> {
 }
 
 export {
+  BusinessOperationsService,
+  type MarketplaceCatalogView,
+  type MarketplaceEmploymentView,
+  type MarketplaceJobView,
+  type PublicCompanyView,
+  type PublicMarketplaceState,
+  type SecondaryShareListingView
+} from "./business-operations.js";
+export {
   CityGameplayService,
   type CityDistrictView,
   type CityGameplayState,

@@ -3,8 +3,6 @@ on:
   pull_request:
   push:
     branches: [main]
-permissions:
-  contents: write
 jobs:
   validate:
     runs-on: ubuntu-latest
@@ -32,38 +30,10 @@ jobs:
       INTERNAL_API_TOKEN: 123456789012345678901234
     steps:
       - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
       - uses: pnpm/action-setup@v4
         with: { version: 10.13.1 }
       - uses: actions/setup-node@v4
         with: { node-version: 22 }
-      - name: Materialize and commit Sprint 7
-        if: ${{ hashFiles('.sprint7/payload.part00a') != '' }}
-        shell: bash
-        run: |
-          set -euxo pipefail
-          cat \
-            .sprint7/payload.part00a \
-            .sprint7/payload.part00b \
-            .sprint7/payload.part01 \
-            .sprint7/payload.part02 \
-            .sprint7/payload.part03 \
-            .sprint7/payload.part04 \
-            .sprint7/payload.part05 > /tmp/sprint7.b64
-          wc -c /tmp/sprint7.b64
-          base64 --decode /tmp/sprint7.b64 > /tmp/sprint7.zip
-          sha256sum /tmp/sprint7.zip
-          echo "e4204a8611deb8766a96bf6a95da59580c244af55fa718d78d1e5477a967e4b5  /tmp/sprint7.zip" | sha256sum --check
-          unzip -t /tmp/sprint7.zip
-          unzip -oq /tmp/sprint7.zip -d .
-          rm -rf .sprint7
-          git checkout origin/main -- .github/workflows/ci.yml
-          git config user.name "Tehkné Solutions CI"
-          git config user.email "actions@tehkne.solutions"
-          git add -A
-          git commit -m "feat: implement business operations and public marketplace"
-          git push origin HEAD:${GITHUB_HEAD_REF:-${GITHUB_REF_NAME}}
       - run: pnpm install --no-frozen-lockfile
       - run: pnpm db:migrate
       - name: Typecheck
