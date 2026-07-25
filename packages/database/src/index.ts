@@ -15,6 +15,14 @@ export async function closeDb(): Promise<void> {
 }
 
 export {
+  type AuthenticatedIdentity,
+  type AuthSessionResult,
+  type NotificationView,
+  type PresenceView,
+  type UserRole
+} from "./auth-security.js";
+export { LiveSecurityService } from "./live-security.js";
+export {
   BusinessOperationsService,
   type MarketplaceCatalogView,
   type MarketplaceEmploymentView,
