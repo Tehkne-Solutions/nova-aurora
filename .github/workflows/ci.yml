@@ -3,8 +3,6 @@ on:
   pull_request:
   push:
     branches: [main]
-permissions:
-  contents: write
 jobs:
   validate:
     runs-on: ubuntu-latest
@@ -32,38 +30,10 @@ jobs:
       INTERNAL_API_TOKEN: 123456789012345678901234
     steps:
       - uses: actions/checkout@v4
-        with:
-          ref: ${{ github.head_ref || github.ref_name }}
       - uses: pnpm/action-setup@v4
         with: { version: 10.13.1 }
       - uses: actions/setup-node@v4
         with: { node-version: 22 }
-      - name: Fix Sprint 8 cycle reorder mapping
-        shell: bash
-        run: |
-          set -euo pipefail
-          python - <<'PY'
-          from pathlib import Path
-          path = Path('packages/database/src/regional-business-management.ts')
-          text = path.read_text()
-          wrong = '''        remainingStock,
-        reorderPoint: Number(row.reorder_point),
-        buildingCondition:'''
-          right = '''        remainingStock,
-        reorderPoint,
-        buildingCondition:'''
-          if right not in text:
-              if wrong not in text:
-                  raise SystemExit('cycle reorder mapping marker not found')
-              text = text.replace(wrong, right, 1)
-              path.write_text(text)
-          PY
-          grep -n -A2 -B1 '^        reorderPoint,$' packages/database/src/regional-business-management.ts
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add packages/database/src/regional-business-management.ts
-          git commit -m "fix: preserve regional cycle reorder threshold"
-          git push origin HEAD:agent/regional-economy-business-management
       - run: pnpm install --no-frozen-lockfile
       - run: pnpm db:migrate
       - name: Typecheck
