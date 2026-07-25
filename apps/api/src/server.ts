@@ -4,6 +4,7 @@ import sensible from "@fastify/sensible";
 import { z } from "zod";
 import { MarketProductionService } from "@nova-aurora/database";
 import { registerBusinessOperationsRoutes } from "./business-operations-routes.js";
+import { registerCityGovernanceRoutes } from "./city-governance-routes.js";
 import { registerCityRoutes } from "./city-routes.js";
 import { snapshot, verticalSlice } from "./economy.js";
 import { registerGameplayRoutes } from "./gameplay-routes.js";
@@ -25,6 +26,7 @@ await registerGameplayRoutes(app);
 await registerPropertyBusinessRoutes(app);
 await registerBusinessOperationsRoutes(app);
 await registerRegionalBusinessManagementRoutes(app);
+await registerCityGovernanceRoutes(app);
 
 function idempotencyKey(request: FastifyRequest): string {
   const key = request.headers["idempotency-key"];
@@ -71,6 +73,7 @@ app.get("/health", async () => ({
   propertyBusiness: "plots-buildings-equity-distributions",
   publicMarketplace: "demand-employment-reputation-secondary-shares",
   regionalManagement: "stock-b2b-campaigns-goals-team-district-metrics",
+  cityGovernance: "expansion-licenses-contracts-participatory-budget-services",
   signature: "Tehkné Solutions"
 }));
 
