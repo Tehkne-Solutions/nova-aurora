@@ -47,5 +47,15 @@ jobs:
         with:
           name: typecheck-diagnostics
           path: typecheck.log
-      - run: pnpm test
+      - name: Test
+        shell: bash
+        run: |
+          set -o pipefail
+          pnpm test 2>&1 | tee test.log
+      - name: Upload test diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-diagnostics
+          path: test.log
       - run: pnpm build
