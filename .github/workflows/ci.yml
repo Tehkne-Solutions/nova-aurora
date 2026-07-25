@@ -39,12 +39,13 @@ jobs:
       - uses: actions/setup-node@v4
         with: { node-version: 22 }
       - name: Materialize and commit Sprint 7
-        if: ${{ hashFiles('.sprint7/payload.part00') != '' }}
+        if: ${{ hashFiles('.sprint7/payload.part00a') != '' }}
         shell: bash
         run: |
           set -euxo pipefail
           cat \
-            .sprint7/payload.part00 \
+            .sprint7/payload.part00a \
+            .sprint7/payload.part00b \
             .sprint7/payload.part01 \
             .sprint7/payload.part02 \
             .sprint7/payload.part03 \
