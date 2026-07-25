@@ -15,6 +15,8 @@ export default function GamePage() {
         <nav>
           <Link href="/">Início</Link>
           <Link href="/business">Empresas</Link>
+          <Link href="/management">Gestão</Link>
+          <Link href="/governance">Governança</Link>
           <Link href="/dashboard">Economia</Link>
         </nav>
       </header>
