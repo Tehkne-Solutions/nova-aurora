@@ -83,10 +83,12 @@ export async function registerBusinessOperationsRoutes(
     "/v1/marketplace/companies/:companyId/jobs",
     async (request) => {
       const body = jobSchema.parse(request.body);
+      const { buildingId, ...job } = body;
       return operations.createJobOpening({
         ownerId: await actorId(app, request),
         companyId: request.params.companyId,
-        ...body,
+        ...job,
+        ...(buildingId === undefined ? {} : { buildingId }),
         idempotencyKey: idempotencyKey(app, request)
       });
     }
