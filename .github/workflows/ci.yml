@@ -43,10 +43,10 @@ jobs:
         run: |
           set -euo pipefail
           sed -i 's/^        reorderPoint,$/        reorderPoint: Number(row.reorder_point),/' packages/database/src/regional-business-management.ts
-          git checkout origin/main -- .github/workflows/ci.yml
+          grep -n 'reorderPoint: Number(row.reorder_point)' packages/database/src/regional-business-management.ts
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add packages/database/src/regional-business-management.ts .github/workflows/ci.yml
+          git add packages/database/src/regional-business-management.ts
           git commit -m "fix: map regional stock reorder point"
           git push origin HEAD:agent/regional-economy-business-management
       - run: pnpm install --no-frozen-lockfile
