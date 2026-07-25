@@ -44,6 +44,18 @@ export {
   type PublicContractView
 } from "./city-governance.js";
 export {
+  MunicipalOperationsService,
+  type CityApprovalView,
+  type CityEmergencyView,
+  type CivicCandidateView,
+  type CivicElectionView,
+  type CivicMandateView,
+  type MunicipalBudgetCycleView,
+  type MunicipalOperationsState,
+  type MunicipalServiceView,
+  type PublicPolicyView
+} from "./municipal-operations.js";
+export {
   CityGameplayService,
   type CityDistrictView,
   type CityGameplayState,

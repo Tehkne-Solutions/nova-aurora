@@ -21,6 +21,7 @@ export default function GovernancePage() {
           <Link href="/business">Propriedades</Link>
           <Link href="/marketplace">Mercado público</Link>
           <Link href="/management">Gestão regional</Link>
+          <Link href="/municipality">Prefeitura</Link>
           <Link href="/dashboard">Economia</Link>
         </nav>
       </header>
