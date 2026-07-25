@@ -255,7 +255,7 @@ export class RegionalBusinessManagementService extends EconomyRepositoryBase {
         catalogTitle: String(row.catalog_title),
         category: String(row.category),
         quantity: Number(row.quantity_units),
-        reorderPoint,
+        reorderPoint: Number(row.reorder_point),
         averageUnitCostMinor: Number(row.average_unit_cost_minor)
       })),
       supplierOffers: offerRows.map((row) => ({
@@ -836,7 +836,7 @@ export class RegionalBusinessManagementService extends EconomyRepositoryBase {
         companyId: company.id,
         buildingId: input.buildingId,
         remainingStock,
-        reorderPoint,
+        reorderPoint: Number(row.reorder_point),
         buildingCondition: Math.max(0, Number(row.condition) - 1),
         averageSatisfaction: Math.round(averageSatisfaction)
       });
