@@ -1,0 +1,184 @@
+.shell {
+  min-height: 100vh;
+  display: grid;
+  grid-template-columns: minmax(0, 1.1fr) minmax(360px, 0.9fr);
+  gap: 28px;
+  align-items: center;
+  padding: 40px;
+  color: #eef8f5;
+  background:
+    radial-gradient(circle at 12% 10%, rgba(78, 207, 164, 0.2), transparent 30rem),
+    radial-gradient(circle at 88% 0%, rgba(84, 131, 244, 0.2), transparent 28rem),
+    #06121b;
+}
+
+.brand,
+.card {
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 28px;
+  background: rgba(10, 27, 39, 0.88);
+  box-shadow: 0 30px 80px rgba(0, 0, 0, 0.24);
+  backdrop-filter: blur(20px);
+}
+
+.brand {
+  padding: clamp(28px, 6vw, 72px);
+}
+
+.brand h1 {
+  max-width: 760px;
+  margin: 10px 0 18px;
+  font-size: clamp(2.8rem, 7vw, 6.5rem);
+  line-height: 0.9;
+  letter-spacing: -0.06em;
+}
+
+.brand > p {
+  max-width: 680px;
+  color: #a5bbc0;
+  font-size: 1.05rem;
+  line-height: 1.75;
+}
+
+.eyebrow {
+  margin: 0;
+  color: #74e5bd;
+  font-size: 0.72rem;
+  font-weight: 900;
+  letter-spacing: 0.18em;
+}
+
+.securityList {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 28px;
+}
+
+.securityList span {
+  padding: 14px;
+  border: 1px solid rgba(116, 229, 189, 0.16);
+  border-radius: 16px;
+  color: #c4d8d8;
+  background: rgba(116, 229, 189, 0.05);
+}
+
+.card {
+  padding: clamp(24px, 5vw, 44px);
+}
+
+.tabs {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
+  margin-bottom: 24px;
+}
+
+.tabs button,
+.primary,
+.demo button {
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 14px;
+  padding: 12px 14px;
+  color: #e9f8f4;
+  background: rgba(255, 255, 255, 0.045);
+  font: inherit;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.tabs button[aria-pressed="true"] {
+  border-color: rgba(116, 229, 189, 0.7);
+  background: rgba(70, 157, 127, 0.48);
+}
+
+.card form {
+  display: grid;
+  gap: 16px;
+}
+
+.card label {
+  display: grid;
+  gap: 7px;
+  color: #bed0d2;
+  font-size: 0.84rem;
+  font-weight: 700;
+}
+
+.card input {
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid rgba(255, 255, 255, 0.11);
+  border-radius: 14px;
+  padding: 13px 14px;
+  color: #f3fffc;
+  background: rgba(4, 13, 20, 0.7);
+  font: inherit;
+  outline: none;
+}
+
+.card input:focus {
+  border-color: #74e5bd;
+  box-shadow: 0 0 0 3px rgba(116, 229, 189, 0.12);
+}
+
+.primary {
+  border-color: rgba(116, 229, 189, 0.48);
+  background: linear-gradient(135deg, #2d8a70, #3b639f);
+}
+
+.primary:disabled {
+  cursor: progress;
+  opacity: 0.6;
+}
+
+.demo {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-top: 22px;
+  padding-top: 18px;
+  border-top: 1px solid rgba(255, 255, 255, 0.07);
+}
+
+.demo span {
+  grid-column: 1 / -1;
+  color: #849ca1;
+  font-size: 0.78rem;
+}
+
+.message {
+  min-height: 24px;
+  margin: 20px 0 0;
+  color: #a8c0c3;
+  line-height: 1.5;
+}
+
+.card footer {
+  margin-top: 28px;
+  color: #70898f;
+  text-align: center;
+  font-size: 0.76rem;
+}
+
+@media (max-width: 900px) {
+  .shell {
+    grid-template-columns: 1fr;
+    padding: 18px;
+  }
+
+  .brand h1 {
+    font-size: clamp(2.7rem, 15vw, 5rem);
+  }
+}
+
+@media (max-width: 520px) {
+  .securityList,
+  .demo {
+    grid-template-columns: 1fr;
+  }
+
+  .demo span {
+    grid-column: auto;
+  }
+}
