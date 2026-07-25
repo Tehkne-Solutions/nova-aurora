@@ -3,6 +3,7 @@ import cors from "@fastify/cors";
 import sensible from "@fastify/sensible";
 import { z } from "zod";
 import { MarketProductionService } from "@nova-aurora/database";
+import { registerAuthRoutes } from "./auth-routes.js";
 import { registerBusinessOperationsRoutes } from "./business-operations-routes.js";
 import { registerCityGovernanceRoutes } from "./city-governance-routes.js";
 import { registerCityRoutes } from "./city-routes.js";
@@ -15,12 +16,39 @@ import { registerRealtime } from "./realtime.js";
 import {
   registerRegionalBusinessManagementRoutes
 } from "./regional-business-management-routes.js";
+import { registerSecurity } from "./security.js";
 
-const app = Fastify({ logger: true });
+const app = Fastify({
+  logger: true,
+  trustProxy: process.env.TRUST_PROXY === "true"
+});
 const economy = new MarketProductionService();
+const allowedOrigins = (process.env.WEB_ORIGINS ?? "http://localhost:3000")
+  .split(",")
+  .map((value) => value.trim())
+  .filter(Boolean);
 
-await app.register(cors, { origin: true });
+await app.register(cors, {
+  origin(origin, callback) {
+    if (!origin || allowedOrigins.includes(origin)) {
+      callback(null, true);
+      return;
+    }
+    callback(new Error("Origem não autorizada."), false);
+  },
+  allowedHeaders: [
+    "authorization",
+    "content-type",
+    "idempotency-key",
+    "x-actor-context",
+    "x-device-name"
+  ],
+  methods: ["GET", "POST", "DELETE", "OPTIONS"],
+  maxAge: 600
+});
 await app.register(sensible);
+await registerSecurity(app);
+await registerAuthRoutes(app);
 await registerRealtime(app);
 await registerCityRoutes(app);
 await registerGameplayRoutes(app);
@@ -41,9 +69,7 @@ function idempotencyKey(request: FastifyRequest): string {
 async function actorId(request: FastifyRequest): Promise<string> {
   const email = request.headers["x-actor-email"];
   if (typeof email !== "string") {
-    throw app.httpErrors.unauthorized(
-      "Cabeçalho x-actor-email obrigatório no runtime de desenvolvimento."
-    );
+    throw app.httpErrors.unauthorized("Identidade autenticada não resolvida.");
   }
   return economy.resolveUserId(email);
 }
@@ -77,6 +103,8 @@ app.get("/health", async () => ({
   regionalManagement: "stock-b2b-campaigns-goals-team-district-metrics",
   cityGovernance: "expansion-licenses-contracts-participatory-budget-services",
   municipalOperations: "budget-cycles-services-elections-policies-emergencies",
+  identitySecurity: "bcrypt-opaque-sessions-rbac-audit-rate-limit",
+  liveCity: "one-time-tickets-presence-notifications",
   signature: "Tehkné Solutions"
 }));
 
