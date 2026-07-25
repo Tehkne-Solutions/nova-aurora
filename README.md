@@ -43,3 +43,19 @@ Acesse:
 - blockchain fora do caminho crítico do MVP.
 
 **Tehkné Solutions**
+
+
+## Sprint 2 — Market & Production Core
+
+- matching de ordens por preço e prioridade temporal;
+- preenchimento parcial;
+- reservas de saldo e inventário;
+- cancelamento com liberação atômica;
+- produção temporizada por BullMQ;
+- recuperação por varredura do worker;
+- eventos em tempo real via Redis Pub/Sub e WebSocket;
+- histórico de trades e preços.
+
+Consulte `docs/SPRINT_2_MARKET_PRODUCTION_CORE.md`.
+
+**Tehkné Solutions**
