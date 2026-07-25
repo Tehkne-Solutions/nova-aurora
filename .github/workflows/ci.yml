@@ -38,16 +38,27 @@ jobs:
         with: { version: 10.13.1 }
       - uses: actions/setup-node@v4
         with: { node-version: 22 }
-      - name: Fix Sprint 8 stock mapping
+      - name: Fix Sprint 8 reorder alert scenario
         shell: bash
         run: |
           set -euo pipefail
-          sed -i 's/^        reorderPoint,$/        reorderPoint: Number(row.reorder_point),/' packages/database/src/regional-business-management.ts
-          grep -n 'reorderPoint: Number(row.reorder_point)' packages/database/src/regional-business-management.ts
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('packages/database/src/regional-business-management.test.ts')
+          text = path.read_text()
+          marker = '  assert.equal(stocked.contracts[0]?.grossMinor, 3000);\n'
+          insertion = '''  assert.equal(stocked.contracts[0]?.grossMinor, 3000);\n\n  await sql`\n    UPDATE business_stock_levels\n    SET reorder_point=10\n    WHERE building_id=${buyerBuildingId}::uuid\n      AND catalog_entry_id=${catalogEntryId}::uuid\n  `;\n'''
+          if insertion not in text:
+              if marker not in text:
+                  raise SystemExit('test marker not found')
+              text = text.replace(marker, insertion, 1)
+              path.write_text(text)
+          PY
+          grep -n 'SET reorder_point=10' packages/database/src/regional-business-management.test.ts
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add packages/database/src/regional-business-management.ts
-          git commit -m "fix: map regional stock reorder point"
+          git add packages/database/src/regional-business-management.test.ts
+          git commit -m "test: configure regional stock reorder threshold"
           git push origin HEAD:agent/regional-economy-business-management
       - run: pnpm install --no-frozen-lockfile
       - run: pnpm db:migrate
