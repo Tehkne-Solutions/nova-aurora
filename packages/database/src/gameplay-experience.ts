@@ -26,7 +26,7 @@ export type NpcView = Readonly<{
 function challengeFromSessionId(sessionId: string): readonly HarvestAction[] {
   const bytes = createHash("sha256").update(sessionId).digest();
   return Array.from({ length: 7 }, (_, index) =>
-    HARVEST_ACTIONS[bytes[index] % HARVEST_ACTIONS.length] ?? "up"
+    HARVEST_ACTIONS[(bytes[index] ?? 0) % HARVEST_ACTIONS.length] ?? "up"
   );
 }
 
