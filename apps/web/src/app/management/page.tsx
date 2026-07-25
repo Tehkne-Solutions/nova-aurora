@@ -20,6 +20,7 @@ export default function ManagementPage() {
           <Link href="/game">Cidade</Link>
           <Link href="/business">Propriedades</Link>
           <Link href="/marketplace">Mercado público</Link>
+          <Link href="/governance">Governança</Link>
           <Link href="/dashboard">Economia</Link>
         </nav>
       </header>
