@@ -36,6 +36,16 @@ jobs:
         with: { node-version: 22 }
       - run: pnpm install --no-frozen-lockfile
       - run: pnpm db:migrate
-      - run: pnpm typecheck
+      - name: Typecheck
+        shell: bash
+        run: |
+          set -o pipefail
+          pnpm typecheck 2>&1 | tee typecheck.log
+      - name: Upload typecheck diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: typecheck-diagnostics
+          path: typecheck.log
       - run: pnpm test
       - run: pnpm build
