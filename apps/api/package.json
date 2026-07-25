@@ -1,0 +1,25 @@
+{
+  "name": "@nova-aurora/api",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/server.ts",
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/server.js",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "node --import tsx --test src/*.test.ts"
+  },
+  "dependencies": {
+    "@fastify/cors": "^11",
+    "@fastify/sensible": "^6",
+    "@nova-aurora/database": "workspace:*",
+    "fastify": "^5",
+    "zod": "^4",
+    "@nova-aurora/ledger": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^22",
+    "tsx": "^4",
+    "typescript": "^5.9"
+  }
+}
