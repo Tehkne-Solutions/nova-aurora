@@ -3,6 +3,7 @@ import cors from "@fastify/cors";
 import sensible from "@fastify/sensible";
 import { z } from "zod";
 import { MarketProductionService } from "@nova-aurora/database";
+import { registerCityRoutes } from "./city-routes.js";
 import { snapshot, verticalSlice } from "./economy.js";
 import { enqueueProductionCompletion } from "./queue.js";
 import { registerRealtime } from "./realtime.js";
@@ -13,6 +14,7 @@ const economy = new MarketProductionService();
 await app.register(cors, { origin: true });
 await app.register(sensible);
 await registerRealtime(app);
+await registerCityRoutes(app);
 
 function idempotencyKey(request: FastifyRequest): string {
   const key = request.headers["idempotency-key"];
@@ -54,6 +56,7 @@ app.get("/health", async () => ({
   service: "nova-aurora-api",
   market: "price-time-priority",
   production: "bullmq-delayed",
+  cityGameplay: "persistent",
   signature: "Tehkné Solutions"
 }));
 

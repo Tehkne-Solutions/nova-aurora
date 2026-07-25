@@ -2,18 +2,22 @@
 
 Mundo econômico virtual persistente da **Tehkné Solutions**.
 
-Este repositório contém o primeiro vertical slice técnico:
+O projeto combina gameplay de cidade, profissões, produção, empresas, mercado entre
+jogadores e uma camada econômica auditável.
 
-`trabalho público → trigo → farinha → pão → oferta → compra → ledger → inventário`
+## Vertical slice atual
+
+`Centro de Empregos → colheita → farinha → pão → oferta → compra → ledger`
 
 ## Stack
 
-- Next.js 16 + React 19
-- Fastify 5
-- PostgreSQL 17
-- Redis 8
-- TypeScript 5.9
-- pnpm + Turborepo
+- Next.js 16 + React 19;
+- Fastify 5;
+- PostgreSQL 17;
+- Redis 8 + BullMQ;
+- WebSocket;
+- TypeScript 5.9;
+- pnpm + Turborepo.
 
 ## Execução local
 
@@ -28,34 +32,29 @@ pnpm dev
 
 Acesse:
 
-- Web: `http://localhost:3000`
-- API: `http://localhost:4000/health`
-- Dashboard: `http://localhost:3000/dashboard`
+- jogo: `http://localhost:3000/game`;
+- dashboard: `http://localhost:3000/dashboard`;
+- API: `http://localhost:4000/health`.
 
-## Princípios econômicos
+## Sistemas implementados
 
-- dupla entrada;
-- valores monetários inteiros em centésimos de CA;
-- idempotência em comandos;
+- ledger de dupla entrada;
 - reservas de saldo e estoque;
-- liquidação serializável;
+- matching por preço e prioridade temporal;
+- preenchimento parcial e cancelamento;
+- produção temporizada;
 - transactional outbox;
-- blockchain fora do caminho crítico do MVP.
+- eventos em tempo real;
+- quatro distritos persistentes;
+- viagem e estado do jogador;
+- trabalhos públicos;
+- onboarding baseado em fatos econômicos.
 
-**Tehkné Solutions**
+## Documentação
 
-
-## Sprint 2 — Market & Production Core
-
-- matching de ordens por preço e prioridade temporal;
-- preenchimento parcial;
-- reservas de saldo e inventário;
-- cancelamento com liberação atômica;
-- produção temporizada por BullMQ;
-- recuperação por varredura do worker;
-- eventos em tempo real via Redis Pub/Sub e WebSocket;
-- histórico de trades e preços.
-
-Consulte `docs/SPRINT_2_MARKET_PRODUCTION_CORE.md`.
+- `docs/ARCHITECTURE.md`;
+- `docs/SPRINT_1_PERSISTENT_ECONOMY.md`;
+- `docs/SPRINT_2_MARKET_PRODUCTION_CORE.md`;
+- `docs/SPRINT_3_CITY_GAMEPLAY.md`.
 
 **Tehkné Solutions**

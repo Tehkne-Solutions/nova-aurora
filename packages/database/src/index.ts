@@ -14,6 +14,13 @@ export async function closeDb(): Promise<void> {
   }
 }
 
+export {
+  CityGameplayService,
+  type CityDistrictView,
+  type CityGameplayState,
+  type CityLocationView,
+  type WelcomeBasketStep
+} from "./city-gameplay.js";
 export { MarketProductionService } from "./market-production.js";
 export {
   tradeGrossMinor,
