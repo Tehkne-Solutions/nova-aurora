@@ -156,6 +156,13 @@ test("gestão regional conecta fornecedor, estoque, campanha, equipe e metas", a
   );
   assert.equal(stocked.contracts[0]?.grossMinor, 3000);
 
+  await sql`
+    UPDATE business_stock_levels
+    SET reorder_point=10
+    WHERE building_id=${buyerBuildingId}::uuid
+      AND catalog_entry_id=${catalogEntryId}::uuid
+  `;
+
   const repeatedStock = await service.acceptSupplierOffer({
     ownerId: buyerId,
     offerId: offer.id,
