@@ -40,14 +40,37 @@ jobs:
         if: hashFiles('.sprint8/chunk01') != ''
         shell: bash
         run: |
-          set -euo pipefail
-          cat \
-            .sprint8/chunk01 .sprint8/chunk02 .sprint8/chunk03 \
-            .sprint8/chunk04 .sprint8/chunk05 .sprint8/chunk06 \
-            .sprint8/chunk07 .sprint8/chunk08 .sprint8/chunk09 \
-            .sprint8/chunk10a .sprint8/chunk10b \
-            .sprint8/chunk11a .sprint8/chunk11b .sprint8/chunk12 \
-            | base64 -d > /tmp/sprint8.zip
+          set -uo pipefail
+          files=(
+            .sprint8/chunk01 .sprint8/chunk02 .sprint8/chunk03
+            .sprint8/chunk04 .sprint8/chunk05 .sprint8/chunk06
+            .sprint8/chunk07 .sprint8/chunk08 .sprint8/chunk09
+            .sprint8/chunk10a .sprint8/chunk10b
+            .sprint8/chunk11a .sprint8/chunk11b .sprint8/chunk12
+          )
+          {
+            echo "Chunk diagnostics"
+            for file in "${files[@]}"; do
+              wc -c "$file"
+              sha256sum "$file"
+            done
+          } > /tmp/sprint8-materialization.log
+          cat "${files[@]}" > /tmp/sprint8.b64
+          {
+            echo "Combined base64"
+            wc -c /tmp/sprint8.b64
+            sha256sum /tmp/sprint8.b64
+          } >> /tmp/sprint8-materialization.log
+          base64 -d /tmp/sprint8.b64 > /tmp/sprint8.zip
+          decode_status=$?
+          {
+            echo "Decoded archive status: $decode_status"
+            wc -c /tmp/sprint8.zip
+            sha256sum /tmp/sprint8.zip
+          } >> /tmp/sprint8-materialization.log
+          cat /tmp/sprint8-materialization.log
+          test "$decode_status" -eq 0
+          echo "e8c7374f70e34c8585d76c673825e19efb313efb8b9571ff7e9eb1db2b36be5a  /tmp/sprint8.b64" | sha256sum -c -
           echo "3fcbc4d112e2faedb98563e0dcd0d7d2ff524cca1bfe98d6e11a45426e18d2bf  /tmp/sprint8.zip" | sha256sum -c -
           test "$(wc -c < /tmp/sprint8.zip)" -eq 26793
           unzip -o /tmp/sprint8.zip
@@ -57,6 +80,12 @@ jobs:
           git add -A
           git commit -m "feat: implement regional economy and business management"
           git push origin HEAD:${GITHUB_HEAD_REF}
+      - name: Upload materialization diagnostics
+        if: failure() && hashFiles('/tmp/sprint8-materialization.log') != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: sprint8-materialization-diagnostics
+          path: /tmp/sprint8-materialization.log
       - run: pnpm install --no-frozen-lockfile
       - run: pnpm db:migrate
       - name: Typecheck
