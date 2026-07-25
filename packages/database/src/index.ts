@@ -15,7 +15,6 @@ export async function closeDb(): Promise<void> {
 }
 
 export {
-  AuthSecurityService,
   type AuthenticatedIdentity,
   type AuthSessionResult,
   type NotificationView,
