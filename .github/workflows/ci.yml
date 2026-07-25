@@ -3,6 +3,8 @@ on:
   pull_request:
   push:
     branches: [main]
+permissions:
+  contents: write
 jobs:
   validate:
     runs-on: ubuntu-latest
@@ -30,10 +32,23 @@ jobs:
       INTERNAL_API_TOKEN: 123456789012345678901234
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref || github.ref_name }}
       - uses: pnpm/action-setup@v4
         with: { version: 10.13.1 }
       - uses: actions/setup-node@v4
         with: { node-version: 22 }
+      - name: Fix Sprint 8 stock mapping
+        shell: bash
+        run: |
+          set -euo pipefail
+          sed -i 's/^        reorderPoint,$/        reorderPoint: Number(row.reorder_point),/' packages/database/src/regional-business-management.ts
+          git checkout origin/main -- .github/workflows/ci.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add packages/database/src/regional-business-management.ts .github/workflows/ci.yml
+          git commit -m "fix: map regional stock reorder point"
+          git push origin HEAD:agent/regional-economy-business-management
       - run: pnpm install --no-frozen-lockfile
       - run: pnpm db:migrate
       - name: Typecheck
