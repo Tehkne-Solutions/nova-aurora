@@ -1,0 +1,14 @@
+{
+  "name": "@nova-aurora/database",
+  "private": true,
+  "type": "module",
+  "exports": { ".": "./src/index.ts" },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "node --import tsx --test src/*.test.ts",
+    "db:migrate": "node scripts/migrate.mjs"
+  },
+  "dependencies": { "postgres": "^3.4" },
+  "devDependencies": { "@types/node": "^22", "tsx": "^4", "typescript": "^5.9" }
+}

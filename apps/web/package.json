@@ -1,0 +1,6 @@
+{
+  "name":"@nova-aurora/web","private":true,
+  "scripts":{"dev":"next dev --turbopack","build":"next build","typecheck":"tsc --noEmit","test":"node --test"},
+  "dependencies":{"next":"^16","react":"^19.2.4","react-dom":"^19.2.4"},
+  "devDependencies":{"@types/node":"^22","@types/react":"^19","@types/react-dom":"^19","typescript":"^5.9"}
+}
