@@ -25,19 +25,26 @@ function idempotencyKey(request: FastifyRequest): string {
 async function actorId(request: FastifyRequest): Promise<string> {
   const email = request.headers["x-actor-email"];
   if (typeof email !== "string") {
-    throw app.httpErrors.unauthorized("Cabeçalho x-actor-email obrigatório no runtime de desenvolvimento.");
+    throw app.httpErrors.unauthorized(
+      "Cabeçalho x-actor-email obrigatório no runtime de desenvolvimento."
+    );
   }
   return economy.resolveUserId(email);
 }
 
 app.setErrorHandler((error, _request, reply) => {
   app.log.error(error);
-  const status = "statusCode" in error && typeof error.statusCode === "number"
-    ? error.statusCode
+  const details = typeof error === "object" && error !== null
+    ? error as { statusCode?: unknown; name?: unknown; message?: unknown }
+    : {};
+  const status = typeof details.statusCode === "number"
+    ? details.statusCode
     : 400;
   return reply.status(status).send({
-    error: error.name,
-    message: error.message,
+    error: typeof details.name === "string" ? details.name : "Error",
+    message: typeof details.message === "string"
+      ? details.message
+      : "Falha inesperada.",
     signature: "Tehkné Solutions"
   });
 });
@@ -51,7 +58,9 @@ app.get("/health", async () => ({
 }));
 
 app.get("/v1/economy/snapshot", async () => snapshot());
-app.post("/v1/tutorial/run", async (request) => verticalSlice(idempotencyKey(request)));
+app.post("/v1/tutorial/run", async (request) =>
+  verticalSlice(idempotencyKey(request))
+);
 
 const marketOrderSchema = z.object({
   side: z.enum(["buy", "sell"]),
@@ -69,19 +78,24 @@ app.post("/v1/market/orders", async (request) => {
   });
 });
 
-app.delete<{ Params: { orderId: string } }>("/v1/market/orders/:orderId", async (request) =>
-  economy.cancelMarketOrder({
+app.delete<{ Params: { orderId: string } }>(
+  "/v1/market/orders/:orderId",
+  async (request) => economy.cancelMarketOrder({
     ownerId: await actorId(request),
     orderId: request.params.orderId,
     idempotencyKey: idempotencyKey(request)
   })
 );
 
-app.get<{ Params: { itemCode: string } }>("/v1/market/order-book/:itemCode", async (request) =>
-  economy.orderBook(request.params.itemCode)
+app.get<{ Params: { itemCode: string } }>(
+  "/v1/market/order-book/:itemCode",
+  async (request) => economy.orderBook(request.params.itemCode)
 );
 
-app.get<{ Params: { itemCode: string }; Querystring: { limit?: string } }>(
+app.get<{
+  Params: { itemCode: string };
+  Querystring: { limit?: string };
+}>(
   "/v1/market/trades/:itemCode",
   async (request) => economy.recentTrades(
     request.params.itemCode,
@@ -107,13 +121,17 @@ app.post("/v1/production/orders", async (request) => {
       completesAt: order.completesAt
     });
   } catch (error) {
-    app.log.warn({ error, orderId: order.id }, "Fila indisponível; worker fará varredura de recuperação.");
+    app.log.warn(
+      { error, orderId: order.id },
+      "Fila indisponível; worker fará varredura de recuperação."
+    );
   }
   return order;
 });
 
-app.delete<{ Params: { orderId: string } }>("/v1/production/orders/:orderId", async (request) =>
-  economy.cancelProduction({
+app.delete<{ Params: { orderId: string } }>(
+  "/v1/production/orders/:orderId",
+  async (request) => economy.cancelProduction({
     ownerId: await actorId(request),
     orderId: request.params.orderId,
     idempotencyKey: idempotencyKey(request)
@@ -124,4 +142,7 @@ app.get("/v1/production/orders", async (request) =>
   economy.productionOrders(await actorId(request))
 );
 
-await app.listen({ host: "0.0.0.0", port: Number(process.env.API_PORT ?? 4000) });
+await app.listen({
+  host: "0.0.0.0",
+  port: Number(process.env.API_PORT ?? 4000)
+});
