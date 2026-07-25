@@ -26,6 +26,7 @@ type Company = Readonly<{
   ownerName: string;
   buildingId: string | null;
   buildingName: string | null;
+  buildingType: string | null;
   level: number;
   condition: number;
   locationName: string | null;
