@@ -37,11 +37,17 @@ jobs:
       - uses: actions/setup-node@v4
         with: { node-version: 22 }
       - name: Materialize and commit Sprint 8
-        if: hashFiles('.sprint8/payload.b64') != ''
+        if: hashFiles('.sprint8/chunk01') != ''
         shell: bash
         run: |
           set -euo pipefail
-          base64 -d .sprint8/payload.b64 > /tmp/sprint8.zip
+          cat \
+            .sprint8/chunk01 .sprint8/chunk02 .sprint8/chunk03 \
+            .sprint8/chunk04 .sprint8/chunk05 .sprint8/chunk06 \
+            .sprint8/chunk07 .sprint8/chunk08 .sprint8/chunk09 \
+            .sprint8/chunk10a .sprint8/chunk10b \
+            .sprint8/chunk11a .sprint8/chunk11b .sprint8/chunk12 \
+            | base64 -d > /tmp/sprint8.zip
           echo "3fcbc4d112e2faedb98563e0dcd0d7d2ff524cca1bfe98d6e11a45426e18d2bf  /tmp/sprint8.zip" | sha256sum -c -
           test "$(wc -c < /tmp/sprint8.zip)" -eq 26793
           unzip -o /tmp/sprint8.zip
