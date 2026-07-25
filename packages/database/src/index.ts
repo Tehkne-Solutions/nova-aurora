@@ -36,6 +36,14 @@ export {
   type SupplierOfferView
 } from "./regional-business-management.js";
 export {
+  CityGovernanceService,
+  type BudgetProposalView,
+  type BusinessLicenseView,
+  type CityGovernanceState,
+  type GovernanceDistrictView,
+  type PublicContractView
+} from "./city-governance.js";
+export {
   CityGameplayService,
   type CityDistrictView,
   type CityGameplayState,
