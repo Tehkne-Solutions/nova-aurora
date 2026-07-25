@@ -19,6 +19,7 @@ export default function BusinessPage() {
         <nav>
           <Link href="/game">Cidade</Link>
           <Link href="/marketplace">Mercado público</Link>
+          <Link href="/management">Gestão regional</Link>
           <Link href="/dashboard">Economia</Link>
         </nav>
       </header>

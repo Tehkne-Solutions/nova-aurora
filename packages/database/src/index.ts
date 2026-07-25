@@ -24,6 +24,18 @@ export {
   type SecondaryShareListingView
 } from "./business-operations.js";
 export {
+  RegionalBusinessManagementService,
+  type BusinessAlertView,
+  type BusinessContractView,
+  type CompanyGoalView,
+  type DistrictBusinessMetricView,
+  type ManagedEmployeeView,
+  type ManagedStockView,
+  type MarketingCampaignView,
+  type RegionalBusinessState,
+  type SupplierOfferView
+} from "./regional-business-management.js";
+export {
   CityGameplayService,
   type CityDistrictView,
   type CityGameplayState,

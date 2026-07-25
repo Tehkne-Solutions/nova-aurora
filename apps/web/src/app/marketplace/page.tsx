@@ -19,6 +19,7 @@ export default function MarketplacePage() {
         <nav>
           <Link href="/game">Cidade</Link>
           <Link href="/business">Minha empresa</Link>
+          <Link href="/management">Gestão regional</Link>
           <Link href="/dashboard">Economia</Link>
         </nav>
       </header>

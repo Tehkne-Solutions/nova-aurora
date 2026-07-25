@@ -10,6 +10,9 @@ import { registerGameplayRoutes } from "./gameplay-routes.js";
 import { registerPropertyBusinessRoutes } from "./property-business-routes.js";
 import { enqueueProductionCompletion } from "./queue.js";
 import { registerRealtime } from "./realtime.js";
+import {
+  registerRegionalBusinessManagementRoutes
+} from "./regional-business-management-routes.js";
 
 const app = Fastify({ logger: true });
 const economy = new MarketProductionService();
@@ -21,6 +24,7 @@ await registerCityRoutes(app);
 await registerGameplayRoutes(app);
 await registerPropertyBusinessRoutes(app);
 await registerBusinessOperationsRoutes(app);
+await registerRegionalBusinessManagementRoutes(app);
 
 function idempotencyKey(request: FastifyRequest): string {
   const key = request.headers["idempotency-key"];
@@ -66,6 +70,7 @@ app.get("/health", async () => ({
   gameplayExperience: "harvest-minigame",
   propertyBusiness: "plots-buildings-equity-distributions",
   publicMarketplace: "demand-employment-reputation-secondary-shares",
+  regionalManagement: "stock-b2b-campaigns-goals-team-district-metrics",
   signature: "Tehkné Solutions"
 }));
 
