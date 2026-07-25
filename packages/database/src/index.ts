@@ -22,6 +22,7 @@ export {
   type PresenceView,
   type UserRole
 } from "./auth-security.js";
+export { LiveSecurityService } from "./live-security.js";
 export {
   BusinessOperationsService,
   type MarketplaceCatalogView,
