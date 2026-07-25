@@ -13,9 +13,10 @@
     "@fastify/cors": "^11",
     "@fastify/sensible": "^6",
     "@nova-aurora/database": "workspace:*",
+    "@nova-aurora/ledger": "workspace:*",
     "fastify": "^5",
-    "zod": "^4",
-    "@nova-aurora/ledger": "workspace:*"
+    "postgres": "^3.4",
+    "zod": "^4"
   },
   "devDependencies": {
     "@types/node": "^22",
