@@ -69,10 +69,20 @@ jobs:
             sha256sum /tmp/sprint8.zip
           } >> sprint8-materialization.log
           cat sprint8-materialization.log
-          test "$decode_status" -eq 0
-          echo "e8c7374f70e34c8585d76c673825e19efb313efb8b9571ff7e9eb1db2b36be5a  /tmp/sprint8.b64" | sha256sum -c -
-          echo "3fcbc4d112e2faedb98563e0dcd0d7d2ff524cca1bfe98d6e11a45426e18d2bf  /tmp/sprint8.zip" | sha256sum -c -
-          test "$(wc -c < /tmp/sprint8.zip)" -eq 26793
+          actual_b64=$(sha256sum /tmp/sprint8.b64 | cut -d' ' -f1)
+          actual_zip=$(sha256sum /tmp/sprint8.zip | cut -d' ' -f1)
+          actual_size=$(wc -c < /tmp/sprint8.zip)
+          if [ "$decode_status" -ne 0 ] || \
+             [ "$actual_b64" != "e8c7374f70e34c8585d76c673825e19efb313efb8b9571ff7e9eb1db2b36be5a" ] || \
+             [ "$actual_zip" != "3fcbc4d112e2faedb98563e0dcd0d7d2ff524cca1bfe98d6e11a45426e18d2bf" ] || \
+             [ "$actual_size" -ne 26793 ]; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add sprint8-materialization.log
+            git commit -m "chore: record Sprint 8 integrity diagnostics"
+            git push origin HEAD:${GITHUB_HEAD_REF}
+            exit 1
+          fi
           unzip -o /tmp/sprint8.zip
           rm -rf .sprint8 sprint8-materialization.log
           git config user.name "github-actions[bot]"
@@ -80,13 +90,6 @@ jobs:
           git add -A
           git commit -m "feat: implement regional economy and business management"
           git push origin HEAD:${GITHUB_HEAD_REF}
-      - name: Upload materialization diagnostics
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: sprint8-materialization-diagnostics
-          path: sprint8-materialization.log
-          if-no-files-found: ignore
       - run: pnpm install --no-frozen-lockfile
       - run: pnpm db:migrate
       - name: Typecheck
