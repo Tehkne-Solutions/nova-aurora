@@ -60,9 +60,9 @@ export class AuthSecurityService extends EconomyRepositoryBase {
     email: string;
     displayName: string;
     password: string;
-    ipAddress?: string;
-    userAgent?: string;
-    deviceName?: string;
+    ipAddress?: string | undefined;
+    userAgent?: string | undefined;
+    deviceName?: string | undefined;
     idempotencyKey: string;
   }): Promise<AuthSessionResult> {
     const email = normalizeEmail(input.email);
@@ -146,9 +146,9 @@ export class AuthSecurityService extends EconomyRepositoryBase {
   async login(input: {
     email: string;
     password: string;
-    ipAddress?: string;
-    userAgent?: string;
-    deviceName?: string;
+    ipAddress?: string | undefined;
+    userAgent?: string | undefined;
+    deviceName?: string | undefined;
   }): Promise<AuthSessionResult> {
     const email = normalizeEmail(input.email);
     const scope = sha256(`${email}:${input.ipAddress ?? "unknown"}`);
@@ -271,9 +271,9 @@ export class AuthSecurityService extends EconomyRepositoryBase {
 
   async rotateSession(input: {
     token: string;
-    ipAddress?: string;
-    userAgent?: string;
-    deviceName?: string;
+    ipAddress?: string | undefined;
+    userAgent?: string | undefined;
+    deviceName?: string | undefined;
   }): Promise<AuthSessionResult> {
     const identity = await this.authenticateToken(input.token);
     const oldHash = sha256(input.token);
@@ -313,8 +313,8 @@ export class AuthSecurityService extends EconomyRepositoryBase {
 
   async logout(input: {
     token: string;
-    ipAddress?: string;
-    userAgent?: string;
+    ipAddress?: string | undefined;
+    userAgent?: string | undefined;
   }): Promise<void> {
     const tokenHash = sha256(input.token);
     await this.sql.begin(async (tx) => {
@@ -344,8 +344,8 @@ export class AuthSecurityService extends EconomyRepositoryBase {
   async assumeContext(input: {
     identity: AuthenticatedIdentity;
     targetEmail: string;
-    ipAddress?: string;
-    userAgent?: string;
+    ipAddress?: string | undefined;
+    userAgent?: string | undefined;
   }): Promise<AuthenticatedIdentity> {
     if (!input.identity.roles.includes("platform-admin")) {
       await this.audit({
@@ -500,14 +500,14 @@ export class AuthSecurityService extends EconomyRepositoryBase {
   async audit(input: {
     actorUserId: string | null;
     subjectUserId: string | null;
-    sessionId?: string;
+    sessionId?: string | undefined;
     action: string;
-    resourceType?: string;
-    resourceId?: string;
+    resourceType?: string | undefined;
+    resourceId?: string | undefined;
     outcome: "success" | "denied" | "failure";
     riskLevel?: "low" | "medium" | "high" | "critical";
-    ipAddress?: string;
-    userAgent?: string;
+    ipAddress?: string | undefined;
+    userAgent?: string | undefined;
     metadata?: unknown;
   }): Promise<void> {
     await this.sql.begin(async (tx) => this.auditInTransaction(tx, input));
@@ -518,9 +518,9 @@ export class AuthSecurityService extends EconomyRepositoryBase {
     email: string;
     displayName: string;
     roles: readonly UserRole[];
-    ipAddress?: string;
-    userAgent?: string;
-    deviceName?: string;
+    ipAddress?: string | undefined;
+    userAgent?: string | undefined;
+    deviceName?: string | undefined;
   }): Promise<AuthSessionResult> {
     const token = randomBytes(32).toString("base64url");
     const sessionId = randomUUID();
@@ -564,14 +564,14 @@ export class AuthSecurityService extends EconomyRepositoryBase {
   private async auditInTransaction(tx: Tx, input: {
     actorUserId: string | null;
     subjectUserId: string | null;
-    sessionId?: string;
+    sessionId?: string | undefined;
     action: string;
-    resourceType?: string;
-    resourceId?: string;
+    resourceType?: string | undefined;
+    resourceId?: string | undefined;
     outcome: "success" | "denied" | "failure";
     riskLevel?: "low" | "medium" | "high" | "critical";
-    ipAddress?: string;
-    userAgent?: string;
+    ipAddress?: string | undefined;
+    userAgent?: string | undefined;
     metadata?: unknown;
   }): Promise<void> {
     await tx`

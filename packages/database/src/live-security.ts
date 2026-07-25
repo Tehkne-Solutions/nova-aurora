@@ -25,9 +25,9 @@ export class LiveSecurityService extends AuthSecurityService {
     email: string;
     displayName: string;
     password: string;
-    ipAddress?: string;
-    userAgent?: string;
-    deviceName?: string;
+    ipAddress?: string | undefined;
+    userAgent?: string | undefined;
+    deviceName?: string | undefined;
     idempotencyKey: string;
   }): Promise<AuthSessionResult> {
     const email = normalizeEmail(input.email);
@@ -285,9 +285,9 @@ export class LiveSecurityService extends AuthSecurityService {
     email: string;
     displayName: string;
     roles: readonly UserRole[];
-    ipAddress?: string;
-    userAgent?: string;
-    deviceName?: string;
+    ipAddress?: string | undefined;
+    userAgent?: string | undefined;
+    deviceName?: string | undefined;
   }): Promise<AuthSessionResult> {
     const token = randomBytes(32).toString("base64url");
     const sessionId = randomUUID();
@@ -330,8 +330,8 @@ export class LiveSecurityService extends AuthSecurityService {
     sessionId: string;
     action: string;
     outcome: "success" | "denied" | "failure";
-    ipAddress?: string;
-    userAgent?: string;
+    ipAddress?: string | undefined;
+    userAgent?: string | undefined;
     metadata?: unknown;
   }): Promise<void> {
     await tx`
