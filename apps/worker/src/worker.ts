@@ -1,5 +1,5 @@
 import { Worker } from "bullmq";
-import Redis from "ioredis";
+import { Redis } from "ioredis";
 import { MarketProductionService } from "@nova-aurora/database";
 
 function connectionOptions(): {
