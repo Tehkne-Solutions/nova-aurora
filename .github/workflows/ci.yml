@@ -1,8 +1,8 @@
 name: CI
-permissions:
-  contents: write
 on:
   pull_request:
+  push:
+    branches: [main]
 jobs:
   validate:
     runs-on: ubuntu-latest
@@ -30,24 +30,10 @@ jobs:
       INTERNAL_API_TOKEN: 123456789012345678901234
     steps:
       - uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event.pull_request.head.ref }}
-          fetch-depth: 0
       - uses: pnpm/action-setup@v4
         with: { version: 10.13.1 }
       - uses: actions/setup-node@v4
         with: { node-version: 22 }
-      - name: Materialize Sprint 6
-        run: node scripts/materialize-sprint6.mjs
-      - name: Commit materialized source
-        run: |
-          git config user.name "Tehkné CI"
-          git config user.email "ci@tehkne.solutions"
-          git add -A
-          if ! git diff --cached --quiet; then
-            git commit -m "feat: implement property and business gameplay"
-            git push origin HEAD:${{ github.event.pull_request.head.ref }}
-          fi
       - run: pnpm install --no-frozen-lockfile
       - run: pnpm db:migrate
       - name: Typecheck
