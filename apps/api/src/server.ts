@@ -6,6 +6,7 @@ import { MarketProductionService } from "@nova-aurora/database";
 import { registerCityRoutes } from "./city-routes.js";
 import { snapshot, verticalSlice } from "./economy.js";
 import { registerGameplayRoutes } from "./gameplay-routes.js";
+import { registerPropertyBusinessRoutes } from "./property-business-routes.js";
 import { enqueueProductionCompletion } from "./queue.js";
 import { registerRealtime } from "./realtime.js";
 
@@ -17,6 +18,7 @@ await app.register(sensible);
 await registerRealtime(app);
 await registerCityRoutes(app);
 await registerGameplayRoutes(app);
+await registerPropertyBusinessRoutes(app);
 
 function idempotencyKey(request: FastifyRequest): string {
   const key = request.headers["idempotency-key"];
@@ -60,6 +62,7 @@ app.get("/health", async () => ({
   production: "bullmq-delayed",
   cityGameplay: "persistent",
   gameplayExperience: "harvest-minigame",
+  propertyBusiness: "plots-buildings-equity-distributions",
   signature: "Tehkné Solutions"
 }));
 

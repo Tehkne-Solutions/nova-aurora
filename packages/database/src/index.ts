@@ -29,6 +29,15 @@ export {
 } from "./gameplay-experience.js";
 export { MarketProductionService } from "./market-production.js";
 export {
+  PropertyBusinessService,
+  type BusinessBuildingView,
+  type EquityPositionView,
+  type OperatingCycleView,
+  type PropertyBusinessState,
+  type PropertyPlotView,
+  type ShareOfferingView
+} from "./property-business.js";
+export {
   tradeGrossMinor,
   tradeTaxMinor,
   type MarketOrderView,
