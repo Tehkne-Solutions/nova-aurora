@@ -75,6 +75,14 @@ export async function registerAuthRoutes(app: FastifyInstance): Promise<void> {
     requireIdentity(app, request)
   );
 
+  app.post("/v1/auth/realtime-ticket", async (request) => {
+    const identity = await requireIdentity(app, request);
+    return {
+      ...(await authSecurity.createRealtimeTicket(identity)),
+      signature: "Tehkné Solutions"
+    };
+  });
+
   app.get("/v1/auth/notifications", async (request) => {
     const identity = await requireIdentity(app, request);
     return {
