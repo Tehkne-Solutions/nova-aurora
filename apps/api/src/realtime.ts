@@ -1,6 +1,6 @@
 import websocket from "@fastify/websocket";
 import type { FastifyInstance } from "fastify";
-import Redis from "ioredis";
+import { Redis } from "ioredis";
 
 export async function registerRealtime(app: FastifyInstance): Promise<void> {
   await app.register(websocket);
@@ -16,15 +16,18 @@ export async function registerRealtime(app: FastifyInstance): Promise<void> {
     socket.on("close", () => sockets.delete(socket));
   });
 
-  const subscriber = new Redis(process.env.REDIS_URL ?? "redis://localhost:6379", {
-    lazyConnect: true,
-    maxRetriesPerRequest: null
-  });
+  const subscriber = new Redis(
+    process.env.REDIS_URL ?? "redis://localhost:6379",
+    {
+      lazyConnect: true,
+      maxRetriesPerRequest: null
+    }
+  );
 
   try {
     await subscriber.connect();
     await subscriber.subscribe("nova-aurora.events");
-    subscriber.on("message", (_channel, payload) => {
+    subscriber.on("message", (_channel: string, payload: string) => {
       for (const socket of sockets) {
         if (socket.readyState === 1) socket.send(payload);
       }
