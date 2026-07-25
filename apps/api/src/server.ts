@@ -3,6 +3,7 @@ import cors from "@fastify/cors";
 import sensible from "@fastify/sensible";
 import { z } from "zod";
 import { MarketProductionService } from "@nova-aurora/database";
+import { authSecurity } from "./auth-context.js";
 import { registerAuthRoutes } from "./auth-routes.js";
 import { registerBusinessOperationsRoutes } from "./business-operations-routes.js";
 import { registerCityGovernanceRoutes } from "./city-governance-routes.js";
@@ -28,6 +29,7 @@ const allowedOrigins = (process.env.WEB_ORIGINS ?? "http://localhost:3000")
   .map((value) => value.trim())
   .filter(Boolean);
 
+await authSecurity.assertProductionSecurity();
 await app.register(cors, {
   origin(origin, callback) {
     if (!origin || allowedOrigins.includes(origin)) {
