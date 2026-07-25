@@ -1,54 +1,17 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { CityWorld } from "./city-world";
 import styles from "./game.module.css";
-
-type Location = Readonly<{
-  code: string;
-  name: string;
-  locationType: string;
-  description: string;
-}>;
-
-type District = Readonly<{
-  code: string;
-  name: string;
-  direction: string;
-  theme: string;
-  description: string;
-  locations: readonly Location[];
-}>;
-
-type QuestStep = Readonly<{
-  code: string;
-  title: string;
-  completed: boolean;
-}>;
-
-type CityState = Readonly<{
-  player: Readonly<{
-    displayName: string;
-    balanceMinor: number;
-    inventory: Readonly<Record<string, number>>;
-    currentDistrictCode: string;
-    currentLocationCode: string;
-  }>;
-  districts: readonly District[];
-  jobs: readonly Readonly<{
-    code: string;
-    title: string;
-    description: string;
-    assignmentStatus: string | null;
-    rewardMinor: number;
-    rewardItemQuantityMinor: number;
-  }>[];
-  onboarding: Readonly<{
-    title: string;
-    completedSteps: number;
-    totalSteps: number;
-    steps: readonly QuestStep[];
-  }>;
-}>;
+import { HarvestMinigame } from "./harvest-minigame";
+import { NpcDialogue } from "./npc-dialogue";
+import type {
+  CityState,
+  ExperienceState,
+  HarvestAction,
+  HarvestSession,
+  Npc
+} from "./types";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
 const ALICE = "alice@nova-aurora.local";
@@ -63,6 +26,10 @@ function aurora(minor: number): string {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2
   })} CA`;
+}
+
+function wait(milliseconds: number): Promise<void> {
+  return new Promise((resolve) => window.setTimeout(resolve, milliseconds));
 }
 
 async function request<T>(
@@ -96,13 +63,22 @@ async function request<T>(
 
 export function CityGame() {
   const [state, setState] = useState<CityState | null>(null);
+  const [experience, setExperience] = useState<ExperienceState | null>(null);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("Carregando Nova Aurora...");
+  const [travelTarget, setTravelTarget] = useState<string | null>(null);
+  const [dialogueNpc, setDialogueNpc] = useState<Npc | null>(null);
+  const [harvest, setHarvest] = useState<HarvestSession | null>(null);
 
   const refresh = useCallback(async () => {
     try {
-      const next = await request<CityState>("/v1/city/state");
-      setState(next);
+      const [nextState, nextExperience] = await Promise.all([
+        request<CityState>("/v1/city/state"),
+        request<ExperienceState>("/v1/gameplay/state")
+      ]);
+      setState(nextState);
+      setExperience(nextExperience);
+      setHarvest((current) => current ?? nextExperience.activeHarvest);
       setMessage("Cidade sincronizada.");
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "API indisponível.");
@@ -124,7 +100,7 @@ export function CityGame() {
       await operation();
       if (refreshDelay > 0) {
         setMessage(`${label} Aguardando o ciclo econômico...`);
-        await new Promise((resolve) => setTimeout(resolve, refreshDelay));
+        await wait(refreshDelay);
       }
       await refresh();
     } catch (error) {
@@ -138,7 +114,7 @@ export function CityGame() {
     .flatMap((district) => district.locations)
     .find((location) => location.code === state.player.currentLocationCode), [state]);
 
-  if (!state) {
+  if (!state || !experience) {
     return <section className={styles.loading}>{message}</section>;
   }
 
@@ -146,14 +122,26 @@ export function CityGame() {
   const step = (code: string) => state.onboarding.steps
     .find((item) => item.code === code)?.completed ?? false;
 
-  const move = (locationCode: string) => run(
-    "Viajando pela cidade...",
-    () => request("/v1/city/move", {
-      method: "POST",
-      body: { locationCode },
-      idempotencyKey: key("move")
-    })
-  );
+  const move = async (locationCode: string) => {
+    if (locationCode === state.player.currentLocationCode || busy) return;
+    setBusy(true);
+    setTravelTarget(locationCode);
+    setMessage("Cruzando as rotas de Nova Aurora...");
+    try {
+      await wait(700);
+      await request("/v1/city/move", {
+        method: "POST",
+        body: { locationCode },
+        idempotencyKey: key("move")
+      });
+      await refresh();
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "A viagem falhou.");
+    } finally {
+      setTravelTarget(null);
+      setBusy(false);
+    }
+  };
 
   const acceptJob = () => run(
     "Aceitando trabalho público...",
@@ -163,13 +151,52 @@ export function CityGame() {
     })
   );
 
-  const completeJob = () => run(
-    "Executando colheita...",
-    () => request("/v1/jobs/harvest-support/complete", {
-      method: "POST",
-      idempotencyKey: key("complete-job")
-    })
+  const startHarvest = () => run(
+    "Preparando o campo...",
+    async () => {
+      const session = await request<HarvestSession>(
+        "/v1/gameplay/harvest/start",
+        {
+          method: "POST",
+          idempotencyKey: key("harvest-start")
+        }
+      );
+      setHarvest(session);
+    }
   );
+
+  const finishHarvest = async (sequence: readonly HarvestAction[]) => {
+    if (!harvest) return;
+    setBusy(true);
+    setMessage("Validando precisão da colheita...");
+    try {
+      const result = await request<HarvestSession>(
+        `/v1/gameplay/harvest/${harvest.id}/complete`,
+        {
+          method: "POST",
+          body: { sequence },
+          idempotencyKey: key("harvest-complete")
+        }
+      );
+      setHarvest(null);
+      if (result.status !== "completed") {
+        setMessage(`Colheita insuficiente: ${result.score}/100. Tente novamente.`);
+        await refresh();
+        return;
+      }
+      setMessage(`Colheita aprovada: ${result.score}/100. Liquidando recompensa...`);
+      await request("/v1/jobs/harvest-support/complete", {
+        method: "POST",
+        idempotencyKey: key("complete-job")
+      });
+      await refresh();
+      setMessage(`Colheita concluída com ${result.score}/100.`);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "A colheita falhou.");
+    } finally {
+      setBusy(false);
+    }
+  };
 
   const produce = (recipeCode: "flour" | "bread", delay: number) => run(
     recipeCode === "flour" ? "Moendo farinha..." : "Assando pão...",
@@ -210,6 +237,8 @@ export function CityGame() {
     })
   );
 
+  const visibleNpc = experience.npcs[0] ?? null;
+
   return (
     <div className={styles.layout}>
       <section className={styles.worldPanel}>
@@ -229,42 +258,13 @@ export function CityGame() {
           <button disabled={busy} onClick={() => void refresh()}>Atualizar</button>
         </div>
 
-        <div className={styles.cityMap} aria-label="Mapa de Nova Aurora">
-          {state.districts.map((district) => (
-            <article
-              className={`${styles.district} ${styles[district.theme] ?? ""} ${
-                district.code === state.player.currentDistrictCode ? styles.activeDistrict : ""
-              }`}
-              data-direction={district.direction}
-              key={district.code}
-            >
-              <div className={styles.districtHeader}>
-                <small>{district.direction}</small>
-                <h2>{district.name}</h2>
-                <p>{district.description}</p>
-              </div>
-              <div className={styles.locations}>
-                {district.locations.map((location) => (
-                  <button
-                    className={location.code === state.player.currentLocationCode
-                      ? styles.currentLocation
-                      : ""}
-                    disabled={busy}
-                    key={location.code}
-                    onClick={() => void move(location.code)}
-                  >
-                    <span>{location.name}</span>
-                    <small>{location.locationType}</small>
-                  </button>
-                ))}
-              </div>
-            </article>
-          ))}
-          <div className={styles.mobilityHub}>
-            <span>Nó Central</span>
-            <small>mobilidade</small>
-          </div>
-        </div>
+        <CityWorld
+          busy={busy}
+          currentLocationCode={state.player.currentLocationCode}
+          districts={state.districts}
+          onMove={(locationCode) => void move(locationCode)}
+          visualLocationCode={travelTarget ?? state.player.currentLocationCode}
+        />
         <p className={styles.statusLine}>{message}</p>
       </section>
 
@@ -294,6 +294,22 @@ export function CityGame() {
           </ol>
         </section>
 
+        {visibleNpc && (
+          <section className={styles.npcCard}>
+            <div className={`${styles.npcMiniPortrait} ${styles[`npc_${visibleNpc.avatar}`] ?? ""}`}>
+              {visibleNpc.name.slice(0, 1)}
+            </div>
+            <div>
+              <span className={styles.actionLabel}>NPC PRÓXIMO</span>
+              <h2>{visibleNpc.name}</h2>
+              <p>{visibleNpc.roleTitle}</p>
+              <button disabled={busy} onClick={() => setDialogueNpc(visibleNpc)}>
+                Conversar
+              </button>
+            </div>
+          </section>
+        )}
+
         <section className={styles.actionCard}>
           <span className={styles.actionLabel}>AÇÃO DISPONÍVEL</span>
           <h2>{currentLocation?.name}</h2>
@@ -309,9 +325,9 @@ export function CityGame() {
               Viajar aos Campos de Colheita
             </button>
           )}
-          {job?.assignmentStatus === "accepted" && state.player.currentLocationCode === "harvest-fields" && (
-            <button disabled={busy} onClick={() => void completeJob()}>
-              Concluir colheita · {aurora(job.rewardMinor)}
+          {job?.assignmentStatus === "accepted" && state.player.currentLocationCode === "harvest-fields" && !step("complete-harvest-job") && (
+            <button disabled={busy} onClick={() => void startHarvest()}>
+              {experience.activeHarvest ? "Retomar colheita" : "Iniciar Ritmo da Colheita"}
             </button>
           )}
           {step("complete-harvest-job") && !step("produce-flour") && (
@@ -351,6 +367,18 @@ export function CityGame() {
           </div>
         </section>
       </aside>
+
+      {dialogueNpc && (
+        <NpcDialogue npc={dialogueNpc} onClose={() => setDialogueNpc(null)} />
+      )}
+      {harvest && (
+        <HarvestMinigame
+          busy={busy}
+          onCancel={() => setHarvest(null)}
+          onSubmit={finishHarvest}
+          session={harvest}
+        />
+      )}
     </div>
   );
 }

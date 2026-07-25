@@ -21,6 +21,12 @@ export {
   type CityLocationView,
   type WelcomeBasketStep
 } from "./city-gameplay.js";
+export {
+  GameplayExperienceService,
+  type HarvestAction,
+  type HarvestSessionView,
+  type NpcView
+} from "./gameplay-experience.js";
 export { MarketProductionService } from "./market-production.js";
 export {
   tradeGrossMinor,

@@ -1,9 +1,14 @@
 import assert from "node:assert/strict";
 import test, { after } from "node:test";
-import { CityGameplayService, closeDb } from "./index.js";
+import {
+  CityGameplayService,
+  closeDb,
+  GameplayExperienceService
+} from "./index.js";
 
-test("jogador navega, aceita e conclui o primeiro trabalho público", async () => {
+test("jogador navega, vence o minijogo e conclui o primeiro trabalho", async () => {
   const city = new CityGameplayService();
+  const gameplay = new GameplayExperienceService();
   const bobId = await city.resolveUserId("bob@nova-aurora.local");
   const run = crypto.randomUUID();
 
@@ -24,12 +29,27 @@ test("jogador navega, aceita e conclui o primeiro trabalho público", async () =
     "accepted"
   );
 
-  const fields = await city.movePlayer({
+  await city.movePlayer({
     ownerId: bobId,
     locationCode: "harvest-fields",
     idempotencyKey: `city:${run}:fields`
   });
-  assert.equal(fields.player.currentDistrictCode, "green-valley");
+
+  const session = await gameplay.startHarvest({
+    ownerId: bobId,
+    idempotencyKey: `gameplay:${run}:start`
+  });
+  assert.equal(session.status, "active");
+  assert.equal(session.challenge.length, 7);
+
+  const harvest = await gameplay.completeHarvest({
+    ownerId: bobId,
+    sessionId: session.id,
+    sequence: session.challenge,
+    idempotencyKey: `gameplay:${run}:complete`
+  });
+  assert.equal(harvest.status, "completed");
+  assert.ok(harvest.score >= 70);
 
   const completed = await city.completeJob({
     ownerId: bobId,
