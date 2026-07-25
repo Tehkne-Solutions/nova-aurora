@@ -1,15 +1,35 @@
 import { createHash } from "node:crypto";
-import type { FastifyInstance } from "fastify";
-import { authSecurity } from "./auth-context.js";
+import type { FastifyInstance, FastifyRequest } from "fastify";
+import {
+  authSecurity,
+  requireIdentity,
+  requestUserAgent
+} from "./auth-context.js";
 
 function hash(value: string): string {
   return createHash("sha256").update(value).digest("hex");
 }
 
+type RequestIdentity = Readonly<{
+  actorUserId: string;
+  subjectUserId: string;
+  sessionId: string;
+}>;
+
+const requestIdentities = new WeakMap<FastifyRequest, RequestIdentity>();
+
+function isPublicIdentityPath(path: string): boolean {
+  return path === "/v1/auth/login"
+    || path === "/v1/auth/register"
+    || path === "/v1/auth/refresh"
+    || path === "/v1/auth/logout"
+    || path === "/v1/realtime";
+}
+
 export async function registerSecurity(app: FastifyInstance): Promise<void> {
   app.addHook("onRequest", async (request) => {
     const path = request.url.split("?", 1)[0] ?? request.url;
-    if (!path.startsWith("/v1/") || path === "/v1/auth/login") return;
+    if (!path.startsWith("/v1/")) return;
 
     const authorization = request.headers.authorization ?? "anonymous";
     const scopeKey = hash(`${request.ip}:${authorization.slice(0, 96)}`);
@@ -26,6 +46,53 @@ export async function registerSecurity(app: FastifyInstance): Promise<void> {
         "Limite de requisições excedido. Tente novamente mais tarde."
       );
     }
+
+    if (isPublicIdentityPath(path) || path.startsWith("/v1/auth/") || path.startsWith("/v1/live/")) {
+      return;
+    }
+
+    const identity = await requireIdentity(app, request);
+    let subject = identity;
+    const context = request.headers["x-actor-context"];
+    if (typeof context === "string" && context.trim().length > 0) {
+      try {
+        subject = await authSecurity.assumeContext({
+          identity,
+          targetEmail: context,
+          ipAddress: request.ip,
+          userAgent: requestUserAgent(request)
+        });
+      } catch (error) {
+        throw app.httpErrors.forbidden(
+          error instanceof Error ? error.message : "Contexto não autorizado."
+        );
+      }
+    }
+
+    request.headers["x-actor-email"] = subject.email;
+    requestIdentities.set(request, {
+      actorUserId: identity.userId,
+      subjectUserId: subject.userId,
+      sessionId: identity.sessionId
+    });
+  });
+
+  app.addHook("onResponse", async (request, reply) => {
+    const identity = requestIdentities.get(request);
+    if (!identity || request.method === "GET" || request.method === "HEAD") return;
+    await authSecurity.audit({
+      actorUserId: identity.actorUserId,
+      subjectUserId: identity.subjectUserId,
+      sessionId: identity.sessionId,
+      action: `api.${request.method.toLowerCase()}`,
+      resourceType: "route",
+      resourceId: request.routeOptions.url,
+      outcome: reply.statusCode < 400 ? "success" : "failure",
+      riskLevel: reply.statusCode >= 500 ? "high" : "low",
+      ipAddress: request.ip,
+      userAgent: requestUserAgent(request),
+      metadata: { statusCode: reply.statusCode }
+    });
   });
 
   app.addHook("onSend", async (_request, reply, payload) => {
