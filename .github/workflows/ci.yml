@@ -36,53 +36,49 @@ jobs:
         with: { version: 10.13.1 }
       - uses: actions/setup-node@v4
         with: { node-version: 22 }
+      - name: Verify Sprint 8 chunk 01
+        run: echo "337bb836658aca41fa9feffad6b803055d5bdf2be160f12ac396b76f5f224af1  .sprint8/chunk01" | sha256sum -c -
+      - name: Verify Sprint 8 chunk 02
+        run: echo "05a67ee9c27b7c2ce259ed16114da99e26eceff3ad0c7fdeb94e2790e20f53aa  .sprint8/chunk02" | sha256sum -c -
+      - name: Verify Sprint 8 chunk 03
+        run: echo "2daaee3d097abd33df9d6ef77f39b91bda4198c451e8a77ef6e35fa8c07751fe  .sprint8/chunk03" | sha256sum -c -
+      - name: Verify Sprint 8 chunk 04
+        run: echo "64ed3bd7ba7071d8a938f02b3ffdfe0b0e8bc976f0ce3a58d64f196569ec6e45  .sprint8/chunk04" | sha256sum -c -
+      - name: Verify Sprint 8 chunk 05
+        run: echo "e2f7a2fd9b80ec95c45e8d17414f9f27c0c1e5e645b6464163c3d46e265c34d1  .sprint8/chunk05" | sha256sum -c -
+      - name: Verify Sprint 8 chunk 06
+        run: echo "0be5ddc99078f5d860ca9c1c6f0c7ce0c667eaff8c6837ea02f024bb1fc9abbd  .sprint8/chunk06" | sha256sum -c -
+      - name: Verify Sprint 8 chunk 07
+        run: echo "96c213cf7d77dae75e5e17fe336fbda556989cd99ff5b4b1f2a285d6961424bd  .sprint8/chunk07" | sha256sum -c -
+      - name: Verify Sprint 8 chunk 08
+        run: echo "1995082fec1c2265461fefc679574014bfed52643106359820782f662620093e  .sprint8/chunk08" | sha256sum -c -
+      - name: Verify Sprint 8 chunk 09
+        run: echo "1a5c33992ff43a5781aff7f20681659b85bbd4f0e81e51fef31584b4ebe617ce  .sprint8/chunk09" | sha256sum -c -
+      - name: Verify Sprint 8 chunk 10a
+        run: echo "4e825e29201146ec0969fd02db47080b615e6a681665d2170520252bed6e31db  .sprint8/chunk10a" | sha256sum -c -
+      - name: Verify Sprint 8 chunk 10b
+        run: echo "9d0841c324416b83732d5625b09d42cb6942f0287d4cddf78ff3e042d6914637  .sprint8/chunk10b" | sha256sum -c -
+      - name: Verify Sprint 8 chunk 11a
+        run: echo "9378c0a6a0a582326067dbfe7be0512ea6b75ef3ccae8b82d7df98865d47f9aa  .sprint8/chunk11a" | sha256sum -c -
+      - name: Verify Sprint 8 chunk 11b
+        run: echo "98b22c826f7f2ded0311cc794cd1a75bca9814c860845d828c2b13a695eafe6e  .sprint8/chunk11b" | sha256sum -c -
+      - name: Verify Sprint 8 chunk 12
+        run: echo "4c9000e973fa6e6a1e5b790043f0a5b7d947fad42db78c917f76892d51e0667e  .sprint8/chunk12" | sha256sum -c -
       - name: Materialize and commit Sprint 8
-        if: hashFiles('.sprint8/chunk01') != ''
         shell: bash
         run: |
-          set -uo pipefail
-          files=(
-            .sprint8/chunk01 .sprint8/chunk02 .sprint8/chunk03
-            .sprint8/chunk04 .sprint8/chunk05 .sprint8/chunk06
-            .sprint8/chunk07 .sprint8/chunk08 .sprint8/chunk09
-            .sprint8/chunk10a .sprint8/chunk10b
-            .sprint8/chunk11a .sprint8/chunk11b .sprint8/chunk12
-          )
-          {
-            echo "Chunk diagnostics"
-            for file in "${files[@]}"; do
-              wc -c "$file"
-              sha256sum "$file"
-            done
-          } > sprint8-materialization.log
-          cat "${files[@]}" > /tmp/sprint8.b64
-          {
-            echo "Combined base64"
-            wc -c /tmp/sprint8.b64
-            sha256sum /tmp/sprint8.b64
-          } >> sprint8-materialization.log
+          set -euo pipefail
+          cat \
+            .sprint8/chunk01 .sprint8/chunk02 .sprint8/chunk03 \
+            .sprint8/chunk04 .sprint8/chunk05 .sprint8/chunk06 \
+            .sprint8/chunk07 .sprint8/chunk08 .sprint8/chunk09 \
+            .sprint8/chunk10a .sprint8/chunk10b \
+            .sprint8/chunk11a .sprint8/chunk11b .sprint8/chunk12 \
+            > /tmp/sprint8.b64
+          echo "e8c7374f70e34c8585d76c673825e19efb313efb8b9571ff7e9eb1db2b36be5a  /tmp/sprint8.b64" | sha256sum -c -
           base64 -d /tmp/sprint8.b64 > /tmp/sprint8.zip
-          decode_status=$?
-          {
-            echo "Decoded archive status: $decode_status"
-            wc -c /tmp/sprint8.zip
-            sha256sum /tmp/sprint8.zip
-          } >> sprint8-materialization.log
-          cat sprint8-materialization.log
-          actual_b64=$(sha256sum /tmp/sprint8.b64 | cut -d' ' -f1)
-          actual_zip=$(sha256sum /tmp/sprint8.zip | cut -d' ' -f1)
-          actual_size=$(wc -c < /tmp/sprint8.zip)
-          if [ "$decode_status" -ne 0 ] || \
-             [ "$actual_b64" != "e8c7374f70e34c8585d76c673825e19efb313efb8b9571ff7e9eb1db2b36be5a" ] || \
-             [ "$actual_zip" != "3fcbc4d112e2faedb98563e0dcd0d7d2ff524cca1bfe98d6e11a45426e18d2bf" ] || \
-             [ "$actual_size" -ne 26793 ]; then
-            git config user.name "github-actions[bot]"
-            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git add -f sprint8-materialization.log
-            git commit -m "chore: record Sprint 8 integrity diagnostics"
-            git push origin HEAD:${GITHUB_HEAD_REF}
-            exit 1
-          fi
+          echo "3fcbc4d112e2faedb98563e0dcd0d7d2ff524cca1bfe98d6e11a45426e18d2bf  /tmp/sprint8.zip" | sha256sum -c -
+          test "$(wc -c < /tmp/sprint8.zip)" -eq 26793
           unzip -o /tmp/sprint8.zip
           rm -rf .sprint8 sprint8-materialization.log
           git config user.name "github-actions[bot]"
