@@ -3,11 +3,11 @@
 Mundo econômico virtual persistente da **Tehkné Solutions**.
 
 O projeto combina gameplay de cidade, profissões, produção, empresas, mercado entre
-jogadores e uma camada econômica auditável.
+jogadores, governança municipal e uma camada econômica auditável.
 
 ## Vertical slice atual
 
-`Centro de Empregos → minijogo de colheita → farinha → pão → oferta → compra → ledger`
+`identidade → cidade → trabalho → produção → empresa → mercado → governança → operação municipal → ledger`
 
 ## Stack
 
@@ -15,7 +15,7 @@ jogadores e uma camada econômica auditável.
 - Fastify 5;
 - PostgreSQL 17;
 - Redis 8 + BullMQ;
-- WebSocket;
+- WebSocket autenticado;
 - TypeScript 5.9;
 - pnpm + Turborepo.
 
@@ -32,25 +32,52 @@ pnpm dev
 
 Acesse:
 
+- login: `http://localhost:3000/login`;
 - jogo: `http://localhost:3000/game`;
-- dashboard: `http://localhost:3000/dashboard`;
+- propriedades e empresas: `http://localhost:3000/business`;
+- mercado público: `http://localhost:3000/marketplace`;
+- gestão regional: `http://localhost:3000/management`;
+- governança: `http://localhost:3000/governance`;
+- prefeitura: `http://localhost:3000/municipality`;
+- identidade e segurança: `http://localhost:3000/account`;
+- dashboard econômico: `http://localhost:3000/dashboard`;
 - API: `http://localhost:4000/health`.
+
+## Identidade local
+
+As contas demonstrativas existem somente para validação local:
+
+- Alice: `alice@nova-aurora.local` / `Aurora@2026`;
+- Bob: `bob@nova-aurora.local` / `Horizonte@2026`.
+
+A API bloqueia a inicialização em `NODE_ENV=production` enquanto essas senhas
+continuarem ativas.
 
 ## Sistemas implementados
 
+- autenticação por senha com bcrypt;
+- sessões opacas persistidas somente como hash;
+- rotação e revogação de sessão;
+- papéis e autorização;
+- trilha de auditoria;
+- rate limiting persistente;
+- tickets WebSocket de uso único;
+- presença e notificações ao vivo;
 - ledger de dupla entrada;
 - reservas de saldo e estoque;
 - matching por preço e prioridade temporal;
 - preenchimento parcial e cancelamento;
 - produção temporizada;
 - transactional outbox;
-- eventos em tempo real;
-- quatro distritos persistentes;
-- personagem e deslocamento animado;
-- NPCs e diálogos contextuais;
-- trabalhos públicos;
-- minijogo agrícola validado no servidor;
-- onboarding baseado em fatos econômicos.
+- personagens, NPCs, diálogos e minijogos;
+- terrenos, construções e empresas;
+- participação fracionada interna;
+- consumidores NPC, empregos e folha salarial;
+- estoque comercial, fornecedores e contratos B2B;
+- campanhas, metas e indicadores regionais;
+- licenças, licitações e orçamento participativo;
+- ciclos fiscais, serviços urbanos e emergências;
+- eleições, conselho e políticas públicas.
 
 ## Documentação
 
@@ -58,6 +85,12 @@ Acesse:
 - `docs/SPRINT_1_PERSISTENT_ECONOMY.md`;
 - `docs/SPRINT_2_MARKET_PRODUCTION_CORE.md`;
 - `docs/SPRINT_3_CITY_GAMEPLAY.md`;
-- `docs/SPRINT_4_GAMEPLAY_EXPERIENCE.md`.
+- `docs/SPRINT_4_GAMEPLAY_EXPERIENCE.md`;
+- `docs/SPRINT_6_PROPERTY_BUSINESS_GAMEPLAY.md`;
+- `docs/SPRINT_7_BUSINESS_OPERATIONS_MARKETPLACE.md`;
+- `docs/SPRINT_8_REGIONAL_ECONOMY_BUSINESS_MANAGEMENT.md`;
+- `docs/SPRINT_9_CITY_EXPANSION_GOVERNANCE.md`;
+- `docs/SPRINT_10_MUNICIPAL_OPERATIONS_CIVIC_ELECTIONS.md`;
+- `docs/SPRINT_11_IDENTITY_SECURITY_LIVE_CITY.md`.
 
 **Tehkné Solutions**
