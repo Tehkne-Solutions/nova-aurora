@@ -24,6 +24,15 @@ type Presence = Readonly<{
   lastHeartbeatAt: string;
 }>;
 
+type ReleaseSecurity = Readonly<{
+  emailVerified: boolean;
+  emailVerifiedAt: string | null;
+  emailVerificationRequired: boolean;
+  emailVerificationSentAt: string | null;
+  betaAccess: "pending" | "invited" | "active" | "suspended";
+  mfaEnabled: boolean;
+}>;
+
 type ComplianceState = Readonly<{
   privacy: Readonly<{
     mfaEnabled: boolean;
@@ -74,6 +83,7 @@ export default function AccountPage() {
   const [notifications, setNotifications] = useState<readonly Notification[]>([]);
   const [presence, setPresence] = useState<readonly Presence[]>([]);
   const [compliance, setCompliance] = useState<ComplianceState | null>(null);
+  const [releaseSecurity, setReleaseSecurity] = useState<ReleaseSecurity | null>(null);
   const [mfaSetup, setMfaSetup] = useState<{ secret: string; otpauthUri: string } | null>(null);
   const [mfaCode, setMfaCode] = useState("");
   const [mfaPassword, setMfaPassword] = useState("");
@@ -82,10 +92,11 @@ export default function AccountPage() {
 
   const load = useCallback(async () => {
     try {
-      const [notificationResponse, presenceResponse, complianceResponse] = await Promise.all([
+      const [notificationResponse, presenceResponse, complianceResponse, securityResponse] = await Promise.all([
         fetch(`${API_URL}/v1/auth/notifications`, { cache: "no-store" }),
         fetch(`${API_URL}/v1/live/presence`, { cache: "no-store" }),
-        fetch(`${API_URL}/v1/compliance/state`, { cache: "no-store" })
+        fetch(`${API_URL}/v1/compliance/state`, { cache: "no-store" }),
+        fetch(`${API_URL}/v1/auth/security-state`, { cache: "no-store" })
       ]);
       if (notificationResponse.ok) {
         const payload = await notificationResponse.json() as { notifications: Notification[] };
@@ -96,13 +107,26 @@ export default function AccountPage() {
         setPresence(payload.presence);
       }
       if (complianceResponse.ok) setCompliance(await complianceResponse.json() as ComplianceState);
-      setMessage("Identidade, privacidade e integridade sincronizadas.");
+      if (securityResponse.ok) {
+        const payload = await securityResponse.json() as { security: ReleaseSecurity };
+        setReleaseSecurity(payload.security);
+      }
+      setMessage("Identidade, beta, privacidade e integridade sincronizados.");
     } catch {
       setMessage("Não foi possível sincronizar a central.");
     }
   }, []);
 
   useEffect(() => { void load(); }, [load]);
+
+  async function resendVerification() {
+    setMessage("Solicitando novo link de verificação…");
+    const response = await fetch(`${API_URL}/v1/auth/email-verification/resend`, { method: "POST" });
+    const payload = await response.json().catch(() => ({})) as { message?: string };
+    if (!response.ok) return setMessage(payload.message ?? "Não foi possível reenviar o link.");
+    setMessage("Novo link de verificação foi colocado na fila de e-mail.");
+    await load();
+  }
 
   async function rotateSession() {
     setMessage("Renovando sessão…");
@@ -229,26 +253,43 @@ export default function AccountPage() {
     <main className={styles.shell}>
       <header className={styles.header}>
         <div>
-          <p className={styles.eyebrow}>NOVA AURORA · IDENTIDADE, PRIVACIDADE E INTEGRIDADE</p>
+          <p className={styles.eyebrow}>NOVA AURORA · IDENTIDADE, BETA E PRIVACIDADE</p>
           <h1>{identity?.displayName ?? "Conta"}</h1>
           <p>{identity?.email}</p>
         </div>
-        <nav>
+        <nav aria-label="Navegação da conta">
           <Link href="/game">Cidade</Link>
           <Link href="/dashboard">Economia</Link>
           <Link href="/municipality">Prefeitura</Link>
           {isAdmin ? <Link href="/integrity">Integridade</Link> : null}
+          {isAdmin ? <Link href="/release">Release</Link> : null}
         </nav>
       </header>
 
-      <p className={styles.message} aria-live="polite">{message}</p>
+      <p className={styles.message} role="status" aria-live="polite">{message}</p>
 
-      <section className={styles.metrics}>
+      <section className={styles.metrics} aria-label="Estado da conta">
         <article><span>Sessão</span><strong>{token ? "Ativa" : "Ausente"}</strong></article>
+        <article><span>E-mail</span><strong>{releaseSecurity?.emailVerified ? "Verificado" : "Pendente"}</strong></article>
+        <article><span>Acesso ao beta</span><strong>{releaseSecurity?.betaAccess ?? "—"}</strong></article>
         <article><span>Segundo fator</span><strong>{compliance?.privacy.mfaEnabled ? "Ativo" : "Inativo"}</strong></article>
-        <article><span>Risco econômico</span><strong>{compliance?.integrity.risk.level ?? "—"}</strong></article>
-        <article><span>Jogadores online</span><strong>{presence.filter((item) => item.status !== "offline").length}</strong></article>
       </section>
+
+      {!releaseSecurity?.emailVerified ? (
+        <section className={styles.panel} aria-labelledby="verification-heading">
+          <h2 id="verification-heading">Confirme seu e-mail para liberar as operações</h2>
+          <p>
+            Você pode entrar e administrar sua conta, mas produção, mercado e ações
+            mutáveis permanecem bloqueados até a confirmação do link enviado.
+          </p>
+          <div className={styles.actions}>
+            <button type="button" onClick={() => void resendVerification()}>Reenviar link de verificação</button>
+          </div>
+          {releaseSecurity?.emailVerificationSentAt ? (
+            <p>Último envio: {new Date(releaseSecurity.emailVerificationSentAt).toLocaleString("pt-BR")}</p>
+          ) : null}
+        </section>
+      ) : null}
 
       <section className={styles.grid}>
         <article className={styles.panel}>
