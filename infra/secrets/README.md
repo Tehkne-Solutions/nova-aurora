@@ -29,7 +29,8 @@ chmod 600 infra/secrets/*.txt
 
 A chave de cifragem não deve ser igual à senha do PostgreSQL, ao token interno ou
 às credenciais do Grafana. Mantenha uma cópia protegida fora do servidor: perder
-essa chave impede a recuperação dos segredos TOTP já cadastrados.
+essa chave impede a recuperação dos segredos TOTP já cadastrados. Não substitua a
+chave diretamente; uma rotação exige recifrar os segredos antes do próximo deploy.
 
 O serviço `migrate` troca as credenciais demonstrativas antes de iniciar API e
 worker. Bob permanece desativado em produção por padrão.
