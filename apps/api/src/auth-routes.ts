@@ -24,11 +24,12 @@ function idempotencyKey(app: FastifyInstance, request: FastifyRequest): string {
 
 const loginSchema = z.object({
   email: z.string().email().max(254),
-  password: z.string().min(12).max(256),
+  password: z.string().min(1).max(256),
   deviceName: z.string().min(2).max(120).optional()
 });
 
 const registerSchema = loginSchema.extend({
+  password: z.string().min(12).max(256),
   displayName: z.string().min(2).max(120),
   inviteCode: z.string().min(8).max(160).optional()
 });
@@ -44,7 +45,7 @@ const mfaCodeSchema = z.object({
 });
 
 const mfaDisableSchema = mfaCodeSchema.extend({
-  password: z.string().min(12).max(256)
+  password: z.string().min(1).max(256)
 });
 
 const recoveryRequestSchema = z.object({
