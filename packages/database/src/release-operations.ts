@@ -1,8 +1,7 @@
+import { LaunchAssuranceService } from "./launch-assurance.js";
+import type { LaunchOperationsReadiness } from "./launch-assurance-rules.js";
 import { ReleaseCandidateService } from "./release-candidate.js";
-import {
-  TrustReadinessService,
-  type TrustReadiness
-} from "./trust-readiness.js";
+import type { TrustReadiness } from "./trust-readiness.js";
 
 export type ReleaseReadinessSummary = Readonly<{
   registrationMode: "open" | "invite-only" | "closed";
@@ -31,6 +30,7 @@ export type ReleaseReadinessSummary = Readonly<{
     waived: number;
   }>;
   trust: TrustReadiness;
+  operations: LaunchOperationsReadiness;
 }>;
 
 function registrationMode(): "open" | "invite-only" | "closed" {
@@ -42,10 +42,10 @@ function registrationMode(): "open" | "invite-only" | "closed" {
 }
 
 export class ReleaseOperationsService extends ReleaseCandidateService {
-  private readonly trustReadiness = new TrustReadinessService();
+  private readonly assurance = new LaunchAssuranceService();
 
   async summary(): Promise<ReleaseReadinessSummary> {
-    const [users, emails, integrity, gates, trust] = await Promise.all([
+    const [users, emails, integrity, gates, trust, operations] = await Promise.all([
       this.sql`
         SELECT
           count(*)::int total,
@@ -75,7 +75,8 @@ export class ReleaseOperationsService extends ReleaseCandidateService {
           count(*) FILTER (WHERE status='waived')::int waived
         FROM release_gate_checks
       `,
-      this.trustReadiness.readiness()
+      this.assurance.readiness(),
+      this.assurance.operationsReadiness()
     ]);
     const user = users[0] ?? {};
     const email = emails[0] ?? {};
@@ -97,7 +98,8 @@ export class ReleaseOperationsService extends ReleaseCandidateService {
         && blocked === 0
         && dead === 0
         && openFraudEvents === 0
-        && trust.launchReady,
+        && trust.launchReady
+        && operations.launchReady,
       users: {
         total: Number(user.total ?? 0),
         activeBeta: Number(user.active_beta ?? 0),
@@ -120,7 +122,8 @@ export class ReleaseOperationsService extends ReleaseCandidateService {
         blocked,
         waived: Number(gate.waived ?? 0)
       },
-      trust
+      trust,
+      operations
     };
   }
 }
