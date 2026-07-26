@@ -15,6 +15,10 @@ export async function loadRuntimeSecrets() {
     process.env.POSTGRES_PASSWORD_FILE,
     "POSTGRES_PASSWORD_FILE"
   );
+  const redisPassword = await readSecret(
+    process.env.REDIS_PASSWORD_FILE,
+    "REDIS_PASSWORD_FILE"
+  );
   const internalToken = await readSecret(
     process.env.INTERNAL_API_TOKEN_FILE,
     "INTERNAL_API_TOKEN_FILE"
@@ -27,13 +31,18 @@ export async function loadRuntimeSecrets() {
   const database = process.env.POSTGRES_DB ?? "nova_aurora";
   const host = process.env.POSTGRES_HOST ?? "postgres";
   const port = process.env.POSTGRES_PORT ?? "5432";
+  const redisHost = process.env.REDIS_HOST ?? "redis";
+  const redisPort = process.env.REDIS_PORT ?? "6379";
   process.env.DATABASE_URL ??=
     `postgresql://${encodeURIComponent(user)}:${encodeURIComponent(password)}`
     + `@${host}:${port}/${encodeURIComponent(database)}`;
+  process.env.REDIS_URL ??=
+    `redis://:${encodeURIComponent(redisPassword)}@${redisHost}:${redisPort}`;
   process.env.INTERNAL_API_TOKEN = internalToken;
 
   return {
     databaseUrl: process.env.DATABASE_URL,
+    redisUrl: process.env.REDIS_URL,
     internalToken
   };
 }
