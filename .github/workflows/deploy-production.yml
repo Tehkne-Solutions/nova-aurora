@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       image_tag:
-        description: "Tag publicada no GHCR, por exemplo 0.13.0"
+        description: "Tag publicada no GHCR, por exemplo 0.14.0"
         required: true
         type: string
       rollback_on_failure:
@@ -49,8 +49,12 @@ jobs:
           set +a
           test -n "${DOMAIN:-}"
           test -n "${SECRETS_DIR:-}"
+          test -n "${PUBLIC_WEB_URL:-}"
+          test -n "${PUBLIC_REGISTRATION_MODE:-}"
+          test -n "${TRANSACTIONAL_EMAIL_ENDPOINT:-}"
+          test -n "${TRANSACTIONAL_EMAIL_FROM:-}"
           test -d "$SECRETS_DIR"
-          for secret in postgres_password redis_password internal_api_token data_encryption_key bootstrap_admin_password bootstrap_bob_password grafana_admin_password; do
+          for secret in postgres_password redis_password internal_api_token data_encryption_key transactional_email_token bootstrap_admin_password bootstrap_bob_password grafana_admin_password; do
             test -s "$SECRETS_DIR/$secret.txt"
           done
 
@@ -127,5 +131,6 @@ jobs:
             echo "- Aplicação: https://$DOMAIN"
             echo "- API: https://api.$DOMAIN/health/ready"
             echo "- Operações: https://ops.$DOMAIN"
+            echo "- Cadastro: $PUBLIC_REGISTRATION_MODE"
             echo "- Assinatura: Tehkné Solutions"
           } >> "$GITHUB_STEP_SUMMARY"
