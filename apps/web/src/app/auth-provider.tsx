@@ -60,6 +60,9 @@ function isProtectedPath(pathname: string): boolean {
     "/integrity",
     "/release",
     "/operations",
+    "/moderation",
+    "/beta-control",
+    "/appeal",
     "/guardian-request"
   ].some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`));
 }
