@@ -2,12 +2,15 @@ import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import {
   ReleaseOperationsService,
-  TransactionalEmailService
+  TransactionalEmailService,
+  TrustReadinessService
 } from "@nova-aurora/database";
 import { requireRole } from "./auth-context.js";
+import { registerTrustRoutes } from "./trust-routes.js";
 
 const release = new ReleaseOperationsService();
 const email = new TransactionalEmailService();
+const trust = new TrustReadinessService();
 
 const inviteSchema = z.object({
   label: z.string().min(3).max(160),
@@ -23,19 +26,23 @@ const gateSchema = z.object({
 });
 
 export async function registerReleaseRoutes(app: FastifyInstance): Promise<void> {
+  await registerTrustRoutes(app);
+
   app.get("/v1/release/state", async (request) => {
     await requireRole(app, request, ["platform-admin", "municipal-admin"]);
-    const [summary, gates, invites, emails] = await Promise.all([
+    const [summary, gates, invites, emails, trustState] = await Promise.all([
       release.summary(),
       release.gates(),
       release.invites(),
-      email.recent(100)
+      email.recent(100),
+      trust.adminState()
     ]);
     return {
       summary,
       gates,
       invites,
       emails,
+      trust: trustState,
       signature: "Tehkné Solutions"
     };
   });
