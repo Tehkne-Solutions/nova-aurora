@@ -36,6 +36,7 @@ export {
   type ReleaseGateView,
   type ReleaseSecurityState
 } from "./release-candidate.js";
+export { RegistrationReleaseService } from "./release-registration.js";
 export {
   TransactionalEmailService,
   enqueueTransactionalEmail,
