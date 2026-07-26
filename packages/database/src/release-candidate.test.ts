@@ -12,7 +12,9 @@ import {
 } from "./index.js";
 
 const databaseAvailable = Boolean(process.env.DATABASE_URL);
-process.env.DATA_ENCRYPTION_KEY ??= "ci-data-encryption-key-12345678901234567890";
+const encryptionKey = process.env.DATA_ENCRYPTION_KEY
+  ?? "ci-data-encryption-key-12345678901234567890";
+process.env.DATA_ENCRYPTION_KEY = encryptionKey;
 process.env.PUBLIC_WEB_URL ??= "http://localhost:3000";
 process.env.PUBLIC_REGISTRATION_MODE = "open";
 process.env.ALLOW_RECOVERY_TOKEN_RESPONSE = "true";
@@ -45,7 +47,7 @@ test(
 
     const sql = db();
     const messages = await sql`
-      SELECT id,pgp_sym_decrypt(payload_ciphertext,${process.env.DATA_ENCRYPTION_KEY}) payload
+      SELECT id,pgp_sym_decrypt(payload_ciphertext,${encryptionKey}) payload
       FROM transactional_email_outbox
       WHERE user_id=${registration.identity.userId}::uuid AND template='verify-email'
       ORDER BY created_at DESC LIMIT 1
