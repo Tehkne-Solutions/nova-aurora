@@ -3,11 +3,11 @@
 Mundo econômico virtual persistente da **Tehkné Solutions**.
 
 O projeto combina gameplay de cidade, profissões, produção, empresas, mercado entre
-jogadores, governança municipal e uma camada econômica auditável.
+jogadores, governança municipal, integridade econômica e abertura pública controlada.
 
 ## Vertical slice atual
 
-`identidade forte → cidade → trabalho → produção → empresa → mercado protegido → governança → compliance → ledger`
+`identidade verificada → beta controlado → cidade → trabalho → produção → empresa → mercado protegido → governança → compliance → ledger`
 
 ## Stack
 
@@ -35,7 +35,9 @@ pnpm dev
 
 Acesse:
 
-- login: `http://localhost:3000/login`;
+- login e cadastro: `http://localhost:3000/login`;
+- confirmação de e-mail: `http://localhost:3000/verify-email`;
+- recuperação: `http://localhost:3000/recover-account`;
 - jogo: `http://localhost:3000/game`;
 - propriedades e empresas: `http://localhost:3000/business`;
 - mercado público: `http://localhost:3000/marketplace`;
@@ -44,6 +46,7 @@ Acesse:
 - prefeitura: `http://localhost:3000/municipality`;
 - identidade e privacidade: `http://localhost:3000/account`;
 - integridade econômica: `http://localhost:3000/integrity`;
+- release candidate: `http://localhost:3000/release`;
 - dashboard econômico: `http://localhost:3000/dashboard`;
 - API: `http://localhost:4000/health`.
 
@@ -58,6 +61,28 @@ A API bloqueia a inicialização em `NODE_ENV=production` enquanto essas senhas
 continuarem ativas. O bootstrap de produção exige nova senha administrativa,
 revoga sessões antigas e desativa Bob por padrão.
 
+## Cadastro do beta
+
+O ambiente aceita três modos:
+
+```text
+PUBLIC_REGISTRATION_MODE=open
+PUBLIC_REGISTRATION_MODE=invite-only
+PUBLIC_REGISTRATION_MODE=closed
+```
+
+Em produção, o padrão recomendado é `invite-only`. Novas contas precisam confirmar
+o e-mail antes de executar operações mutáveis. Convites podem ser limitados a um
+e-mail ou domínio, expiram e possuem quantidade máxima de resgates.
+
+## E-mail transacional
+
+Verificação e recuperação usam uma outbox persistente. O conteúdo da mensagem fica
+cifrado no PostgreSQL e o worker entrega por um endpoint HTTPS autenticado. Falhas
+recebem retry exponencial e seguem para dead-letter após cinco tentativas.
+
+A API não retorna tokens de recuperação em produção.
+
 ## Produção
 
 Arquivos principais:
@@ -68,7 +93,8 @@ Arquivos principais:
 - `infra/docker-compose.prod.yml`;
 - `.env.production.example`;
 - `infra/secrets/README.md`;
-- `docs/RUNBOOK_PRODUCTION.md`.
+- `docs/RUNBOOK_PRODUCTION.md`;
+- `docs/RUNBOOK_PUBLIC_BETA.md`.
 
 O stack público expõe somente o Caddy. PostgreSQL, Redis, API, worker,
 Prometheus e Grafana permanecem na rede interna.
@@ -83,6 +109,23 @@ GET /metrics
 
 O endpoint `/metrics` exige Bearer token interno.
 
+## Qualidade do release
+
+O CI valida:
+
+- migrations e TypeScript estrito;
+- testes transacionais e regressão;
+- build integral;
+- Chrome headless real com login pela interface;
+- acessibilidade estrutural e exceções JavaScript;
+- carga concorrente e p95;
+- Compose, Caddy e Prometheus;
+- imagens de produção;
+- backup e restauração.
+
+As evidências do navegador e da carga são publicadas no artifact
+`release-qa-evidence`.
+
 ## Publicação
 
 - tags `v*` publicam API, worker e web no GHCR;
@@ -91,7 +134,8 @@ O endpoint `/metrics` exige Bearer token interno.
 - o runner de produção mantém secrets fora do checkout;
 - cada deploy cria backup antes da atualização;
 - readiness público decide sucesso ou rollback;
-- a última tag saudável permanece registrada no servidor.
+- a última tag saudável permanece registrada no servidor;
+- a abertura pública continua condicionada aos gates da central `/release`.
 
 ## Backups
 
@@ -114,7 +158,13 @@ aprovação administrativa.
 - autenticação por senha com bcrypt;
 - recuperação de conta com token opaco;
 - TOTP e códigos de recuperação;
-- cifragem separada dos segredos MFA;
+- verificação de e-mail de uso único;
+- cadastro aberto, por convite ou fechado;
+- convites com expiração, escopo e limite de usos;
+- gate de operações para contas não verificadas;
+- outbox de e-mail com conteúdo cifrado;
+- retry exponencial e dead-letter;
+- central de release e evidências;
 - sessões opacas persistidas somente como hash;
 - rotação e revogação de sessão;
 - papéis e autorização;
@@ -142,7 +192,7 @@ aprovação administrativa.
 - matching por preço e prioridade temporal;
 - preenchimento parcial e cancelamento;
 - produção temporizada;
-- transactional outbox;
+- transactional outbox econômico;
 - personagens, NPCs, diálogos e minijogos;
 - terrenos, construções e empresas;
 - participação fracionada interna;
@@ -157,6 +207,7 @@ aprovação administrativa.
 
 - `docs/ARCHITECTURE.md`;
 - `docs/RUNBOOK_PRODUCTION.md`;
+- `docs/RUNBOOK_PUBLIC_BETA.md`;
 - `docs/SPRINT_1_PERSISTENT_ECONOMY.md`;
 - `docs/SPRINT_2_MARKET_PRODUCTION_CORE.md`;
 - `docs/SPRINT_3_CITY_GAMEPLAY.md`;
@@ -168,6 +219,7 @@ aprovação administrativa.
 - `docs/SPRINT_10_MUNICIPAL_OPERATIONS_CIVIC_ELECTIONS.md`;
 - `docs/SPRINT_11_IDENTITY_SECURITY_LIVE_CITY.md`;
 - `docs/SPRINT_12_PUBLIC_DEPLOYMENT_OBSERVABILITY.md`;
-- `docs/SPRINT_13_ECONOMY_INTEGRITY_COMPLIANCE.md`.
+- `docs/SPRINT_13_ECONOMY_INTEGRITY_COMPLIANCE.md`;
+- `docs/SPRINT_14_RELEASE_CANDIDATE_PUBLIC_BETA.md`.
 
 **Tehkné Solutions**

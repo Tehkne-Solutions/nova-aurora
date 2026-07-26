@@ -12,7 +12,12 @@ x-app-environment: &app-environment
   REDIS_PASSWORD_FILE: /run/secrets/redis_password
   INTERNAL_API_TOKEN_FILE: /run/secrets/internal_api_token
   DATA_ENCRYPTION_KEY_FILE: /run/secrets/data_encryption_key
+  TRANSACTIONAL_EMAIL_TOKEN_FILE: /run/secrets/transactional_email_token
   ALLOW_RECOVERY_TOKEN_RESPONSE: "false"
+  PUBLIC_WEB_URL: ${PUBLIC_WEB_URL:-https://${DOMAIN:?DOMAIN obrigatório}}
+  PUBLIC_REGISTRATION_MODE: ${PUBLIC_REGISTRATION_MODE:-invite-only}
+  TRANSACTIONAL_EMAIL_ENDPOINT: ${TRANSACTIONAL_EMAIL_ENDPOINT:?TRANSACTIONAL_EMAIL_ENDPOINT obrigatório}
+  TRANSACTIONAL_EMAIL_FROM: ${TRANSACTIONAL_EMAIL_FROM:?TRANSACTIONAL_EMAIL_FROM obrigatório}
   APP_VERSION: ${APP_VERSION:-development}
   GIT_COMMIT_SHA: ${GIT_COMMIT_SHA:-unknown}
   LOG_LEVEL: ${LOG_LEVEL:-info}
@@ -22,6 +27,7 @@ x-app-secrets: &app-secrets
   - redis_password
   - internal_api_token
   - data_encryption_key
+  - transactional_email_token
 
 x-node-runtime: &node-runtime
   restart: unless-stopped
@@ -82,6 +88,7 @@ services:
       - redis_password
       - internal_api_token
       - data_encryption_key
+      - transactional_email_token
       - bootstrap_admin_password
       - bootstrap_bob_password
     command: ["node", "infra/docker/migrate-and-secure.mjs"]
@@ -252,6 +259,8 @@ secrets:
     file: ${SECRETS_DIR:-./secrets}/internal_api_token.txt
   data_encryption_key:
     file: ${SECRETS_DIR:-./secrets}/data_encryption_key.txt
+  transactional_email_token:
+    file: ${SECRETS_DIR:-./secrets}/transactional_email_token.txt
   bootstrap_admin_password:
     file: ${SECRETS_DIR:-./secrets}/bootstrap_admin_password.txt
   bootstrap_bob_password:

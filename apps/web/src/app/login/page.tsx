@@ -15,7 +15,8 @@ const PROTECTED_DESTINATIONS = [
   "/municipality",
   "/dashboard",
   "/account",
-  "/integrity"
+  "/integrity",
+  "/release"
 ] as const;
 type ProtectedDestination = typeof PROTECTED_DESTINATIONS[number];
 type Mode = "login" | "register" | "recovery";
@@ -35,7 +36,14 @@ type Identity = Readonly<{
   expiresAt: string;
 }>;
 
-type AuthResult = Readonly<{ token: string; identity: Identity }>;
+type AuthResult = Readonly<{
+  token: string;
+  identity: Identity;
+  release?: Readonly<{
+    emailVerified: boolean;
+    betaAccess: string;
+  }>;
+}>;
 type MfaChallenge = Readonly<{
   requiresMfa: true;
   challenge: string;
@@ -49,6 +57,7 @@ export default function LoginPage() {
   const [email, setEmail] = useState("alice@nova-aurora.local");
   const [password, setPassword] = useState("Aurora@2026");
   const [displayName, setDisplayName] = useState("");
+  const [inviteCode, setInviteCode] = useState("");
   const [mfaChallenge, setMfaChallenge] = useState<string | null>(null);
   const [mfaCode, setMfaCode] = useState("");
   const [recoveryToken, setRecoveryToken] = useState("");
@@ -56,10 +65,10 @@ export default function LoginPage() {
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("Entre para acessar sua cidade persistente.");
 
-  function finishSession(payload: AuthResult) {
+  function finishSession(payload: AuthResult, destination?: ProtectedDestination) {
     setSession(payload.token, payload.identity);
     const requested = new URLSearchParams(window.location.search).get("returnTo");
-    router.replace(safeDestination(requested));
+    router.replace(destination ?? safeDestination(requested));
   }
 
   async function submit(event: FormEvent<HTMLFormElement>) {
@@ -102,7 +111,7 @@ export default function LoginPage() {
           if (payload.token) setRecoveryToken(payload.token);
           setMessage(payload.token
             ? "Token local recebido. Defina uma nova senha."
-            : "Se a conta existir, as instruções de recuperação serão enviadas.");
+            : "Se a conta existir, enviamos um link de recuperação ao e-mail cadastrado.");
           return;
         }
         const response = await fetch(`${API_URL}/v1/auth/recovery/confirm`, {
@@ -135,7 +144,10 @@ export default function LoginPage() {
           email,
           password,
           deviceName: "Nova Aurora Web",
-          ...(mode === "register" ? { displayName } : {})
+          ...(mode === "register" ? {
+            displayName,
+            ...(inviteCode.trim() ? { inviteCode: inviteCode.trim() } : {})
+          } : {})
         })
       });
       const payload = await response.json() as AuthResult | MfaChallenge | { message?: string };
@@ -150,6 +162,11 @@ export default function LoginPage() {
         return;
       }
       if (!("token" in payload)) throw new Error("Resposta de autenticação inválida.");
+      if (mode === "register" && payload.release && !payload.release.emailVerified) {
+        setMessage("Conta criada. Confirme seu e-mail para liberar as operações do beta.");
+        finishSession(payload, "/account");
+        return;
+      }
       finishSession(payload);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Falha de autenticação.");
@@ -164,9 +181,9 @@ export default function LoginPage() {
     setMfaCode("");
     setRecoveryToken("");
     setMessage(next === "recovery"
-      ? "Informe o e-mail para iniciar a recuperação."
+      ? "Informe o e-mail para receber um link de recuperação."
       : next === "register"
-        ? "Crie sua identidade persistente."
+        ? "Crie sua identidade e confirme o e-mail para entrar no beta."
         : "Entre para acessar sua cidade persistente.");
   }
 
@@ -183,26 +200,26 @@ export default function LoginPage() {
 
   return (
     <main className={styles.shell}>
-      <section className={styles.brand}>
-        <p className={styles.eyebrow}>NOVA AURORA · IDENTIDADE SEGURA</p>
-        <h1>Sua cidade, seus negócios, sua história.</h1>
+      <section className={styles.brand} aria-labelledby="login-title">
+        <p className={styles.eyebrow}>NOVA AURORA · BETA CONTROLADO</p>
+        <h1 id="login-title">Sua cidade, seus negócios, sua história.</h1>
         <p>
-          Sessões persistentes, segundo fator, auditoria e recuperação protegida
+          Convites controlados, e-mail verificado, segundo fator e auditoria
           preservam cada decisão econômica e cívica.
         </p>
-        <div className={styles.securityList}>
-          <span>Senha protegida com bcrypt</span>
+        <div className={styles.securityList} aria-label="Proteções da conta">
+          <span>Verificação de e-mail obrigatória</span>
           <span>TOTP e códigos de recuperação</span>
           <span>Tokens opacos armazenados como hash</span>
-          <span>Recuperação revoga sessões antigas</span>
+          <span>Recuperação entregue fora da API</span>
         </div>
       </section>
 
-      <section className={styles.card}>
+      <section className={styles.card} aria-label="Autenticação Nova Aurora">
         {!mfaChallenge ? (
-          <div className={styles.tabs}>
-            <button type="button" aria-pressed={mode === "login"} onClick={() => chooseMode("login")}>Entrar</button>
-            <button type="button" aria-pressed={mode === "register"} onClick={() => chooseMode("register")}>Criar conta</button>
+          <div className={styles.tabs} role="tablist" aria-label="Opções de autenticação">
+            <button type="button" role="tab" aria-selected={mode === "login"} onClick={() => chooseMode("login")}>Entrar</button>
+            <button type="button" role="tab" aria-selected={mode === "register"} onClick={() => chooseMode("register")}>Criar conta</button>
           </div>
         ) : null}
 
@@ -243,10 +260,16 @@ export default function LoginPage() {
           ) : (
             <>
               {mode === "register" ? (
-                <label>
-                  Nome público
-                  <input value={displayName} onChange={(event) => setDisplayName(event.target.value)} minLength={2} maxLength={120} autoComplete="name" required />
-                </label>
+                <>
+                  <label>
+                    Nome público
+                    <input value={displayName} onChange={(event) => setDisplayName(event.target.value)} minLength={2} maxLength={120} autoComplete="name" required />
+                  </label>
+                  <label>
+                    Convite do beta <small>quando solicitado</small>
+                    <input value={inviteCode} onChange={(event) => setInviteCode(event.target.value)} minLength={8} maxLength={160} autoComplete="off" />
+                  </label>
+                </>
               ) : null}
               <label>
                 E-mail
@@ -254,7 +277,7 @@ export default function LoginPage() {
               </label>
               <label>
                 Senha
-                <input type="password" value={password} onChange={(event) => setPassword(event.target.value)} minLength={12} maxLength={256} autoComplete={mode === "login" ? "current-password" : "new-password"} required />
+                <input type="password" value={password} onChange={(event) => setPassword(event.target.value)} minLength={mode === "login" ? 1 : 12} maxLength={256} autoComplete={mode === "login" ? "current-password" : "new-password"} required />
               </label>
             </>
           )}
@@ -266,10 +289,10 @@ export default function LoginPage() {
                 : mode === "login"
                   ? "Entrar em Nova Aurora"
                   : mode === "register"
-                    ? "Criar identidade"
+                    ? "Solicitar acesso ao beta"
                     : recoveryToken
                       ? "Alterar senha"
-                      : "Solicitar recuperação"}
+                      : "Enviar link de recuperação"}
           </button>
         </form>
 
@@ -290,7 +313,7 @@ export default function LoginPage() {
           </div>
         ) : null}
 
-        <p className={styles.message} aria-live="polite">{message}</p>
+        <p className={styles.message} role="status" aria-live="polite">{message}</p>
         <footer>Tehkné Solutions</footer>
       </section>
     </main>

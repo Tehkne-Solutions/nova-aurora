@@ -28,6 +28,25 @@ export {
   type MfaSetupResult,
   type SecureLoginResult
 } from "./strong-identity.js";
+export { AccountDeliveryService } from "./account-delivery.js";
+export {
+  ReleaseCandidateService,
+  type BetaAccessState,
+  type BetaInviteView,
+  type ReleaseGateView,
+  type ReleaseSecurityState
+} from "./release-candidate.js";
+export { RegistrationReleaseService } from "./release-registration.js";
+export {
+  ReleaseOperationsService,
+  type ReleaseReadinessSummary
+} from "./release-operations.js";
+export {
+  TransactionalEmailService,
+  enqueueTransactionalEmail,
+  type TransactionalEmailTemplate,
+  type TransactionalEmailView
+} from "./transactional-email.js";
 export {
   PrivacyComplianceService,
   type ConsentPurpose,

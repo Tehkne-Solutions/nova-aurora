@@ -27,11 +27,18 @@ export async function loadRuntimeSecrets() {
     process.env.DATA_ENCRYPTION_KEY_FILE,
     "DATA_ENCRYPTION_KEY_FILE"
   );
+  const transactionalEmailToken = await readSecret(
+    process.env.TRANSACTIONAL_EMAIL_TOKEN_FILE,
+    "TRANSACTIONAL_EMAIL_TOKEN_FILE"
+  );
   if (internalToken.length < 24) {
     throw new Error("O token interno deve possuir pelo menos 24 caracteres.");
   }
   if (encryptionKey.length < 32) {
     throw new Error("A chave de cifragem deve possuir pelo menos 32 caracteres.");
+  }
+  if (transactionalEmailToken.length < 24) {
+    throw new Error("O token do provedor de e-mail deve possuir pelo menos 24 caracteres.");
   }
 
   const user = process.env.POSTGRES_USER ?? "nova_aurora";
@@ -47,13 +54,15 @@ export async function loadRuntimeSecrets() {
     `redis://:${encodeURIComponent(redisPassword)}@${redisHost}:${redisPort}`;
   process.env.INTERNAL_API_TOKEN = internalToken;
   process.env.DATA_ENCRYPTION_KEY = encryptionKey;
+  process.env.TRANSACTIONAL_EMAIL_TOKEN = transactionalEmailToken;
   process.env.ALLOW_RECOVERY_TOKEN_RESPONSE ??= "false";
 
   return {
     databaseUrl: process.env.DATABASE_URL,
     redisUrl: process.env.REDIS_URL,
     internalToken,
-    encryptionKey
+    encryptionKey,
+    transactionalEmailToken
   };
 }
 

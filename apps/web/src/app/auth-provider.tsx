@@ -57,8 +57,17 @@ function isProtectedPath(pathname: string): boolean {
     "/municipality",
     "/dashboard",
     "/account",
-    "/integrity"
+    "/integrity",
+    "/release"
   ].some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`));
+}
+
+function isPublicAuthRequest(requestUrl: string): boolean {
+  return requestUrl.includes("/v1/auth/login")
+    || requestUrl.includes("/v1/auth/register")
+    || requestUrl.includes("/v1/auth/mfa/complete")
+    || requestUrl.includes("/v1/auth/recovery/")
+    || requestUrl.includes("/v1/auth/email-verification/confirm");
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
@@ -86,8 +95,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       const activeToken = localStorage.getItem(TOKEN_KEY);
       const activeIdentity = storedIdentity();
-      const publicAuth = requestUrl.includes("/v1/auth/login")
-        || requestUrl.includes("/v1/auth/register");
+      const publicAuth = isPublicAuthRequest(requestUrl);
       const headers = new Headers(input instanceof Request ? input.headers : undefined);
       new Headers(init?.headers).forEach((value, name) => headers.set(name, value));
 

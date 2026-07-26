@@ -17,6 +17,7 @@ import { closeObservability, registerObservability } from "./observability.js";
 import { registerPropertyBusinessRoutes } from "./property-business-routes.js";
 import { enqueueProductionCompletion } from "./queue.js";
 import { registerRealtime } from "./realtime.js";
+import { registerReleaseRoutes } from "./release-routes.js";
 import {
   registerRegionalBusinessManagementRoutes
 } from "./regional-business-management-routes.js";
@@ -38,6 +39,24 @@ function validateRuntime(): void {
   const origins = process.env.WEB_ORIGINS ?? "";
   if (!origins || origins.includes("localhost")) {
     throw new Error("WEB_ORIGINS precisa conter apenas origens públicas em produção.");
+  }
+  const publicWebUrl = process.env.PUBLIC_WEB_URL ?? "";
+  if (!publicWebUrl.startsWith("https://") || publicWebUrl.includes("localhost")) {
+    throw new Error("PUBLIC_WEB_URL precisa usar HTTPS público em produção.");
+  }
+  const registrationMode = process.env.PUBLIC_REGISTRATION_MODE;
+  if (!registrationMode || !["open", "invite-only", "closed"].includes(registrationMode)) {
+    throw new Error("PUBLIC_REGISTRATION_MODE precisa ser configurado em produção.");
+  }
+  const emailEndpoint = process.env.TRANSACTIONAL_EMAIL_ENDPOINT ?? "";
+  if (!emailEndpoint.startsWith("https://")) {
+    throw new Error("TRANSACTIONAL_EMAIL_ENDPOINT precisa usar HTTPS em produção.");
+  }
+  if (!process.env.TRANSACTIONAL_EMAIL_FROM?.includes("@")) {
+    throw new Error("TRANSACTIONAL_EMAIL_FROM inválido.");
+  }
+  if (!process.env.TRANSACTIONAL_EMAIL_TOKEN || process.env.TRANSACTIONAL_EMAIL_TOKEN.length < 24) {
+    throw new Error("TRANSACTIONAL_EMAIL_TOKEN deve possuir pelo menos 24 caracteres.");
   }
   if (process.env.TRUST_PROXY !== "true") {
     throw new Error("TRUST_PROXY=true é obrigatório atrás do proxy de produção.");
@@ -95,6 +114,7 @@ await registerObservability(app);
 await registerSecurity(app);
 await registerAuthRoutes(app);
 await registerComplianceRoutes(app);
+await registerReleaseRoutes(app);
 await registerRealtime(app);
 await registerCityRoutes(app);
 await registerGameplayRoutes(app);
@@ -162,6 +182,7 @@ app.get("/health", async () => ({
   liveCity: "one-time-tickets-presence-notifications",
   observability: "liveness-readiness-prometheus-request-id",
   economyIntegrity: "mfa-privacy-antifraud-limits-circuit-breakers",
+  releaseCandidate: "verified-email-beta-invites-transactional-delivery-release-gates",
   signature: "Tehkné Solutions"
 }));
 

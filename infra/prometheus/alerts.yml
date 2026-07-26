@@ -56,3 +56,23 @@ groups:
         annotations:
           summary: "Falha recente no worker"
           description: "O worker registrou falha de tick ou processamento de job nos últimos 10 minutos."
+
+      - alert: NovaAuroraTransactionalEmailFailures
+        expr: increase(nova_aurora_worker_transactional_email_total{result="failed"}[10m]) > 2
+        for: 2m
+        labels:
+          severity: warning
+          product: nova-aurora
+        annotations:
+          summary: "Falhas recorrentes no e-mail transacional"
+          description: "Mais de duas entregas transacionais falharam nos últimos 10 minutos."
+
+      - alert: NovaAuroraTransactionalEmailDeadLetter
+        expr: increase(nova_aurora_worker_transactional_email_total{result="dead"}[15m]) > 0
+        for: 1m
+        labels:
+          severity: critical
+          product: nova-aurora
+        annotations:
+          summary: "Mensagem transacional em dead-letter"
+          description: "Uma mensagem excedeu o limite de tentativas e exige intervenção administrativa."
