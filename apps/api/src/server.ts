@@ -119,19 +119,19 @@ async function actorId(request: FastifyRequest): Promise<string> {
 }
 
 app.setErrorHandler((error, request, reply) => {
-  app.log.error({
-    error,
-    requestId: request.id,
-    method: request.method,
-    route: request.routeOptions.url,
-    statusCode: error.statusCode ?? 500
-  }, "request.failed");
   const details = typeof error === "object" && error !== null
     ? error as { statusCode?: unknown; name?: unknown; message?: unknown }
     : {};
   const status = typeof details.statusCode === "number"
     ? details.statusCode
     : 400;
+  app.log.error({
+    error,
+    requestId: request.id,
+    method: request.method,
+    route: request.routeOptions.url,
+    statusCode: status
+  }, "request.failed");
   return reply.status(status).send({
     error: typeof details.name === "string" ? details.name : "Error",
     message: typeof details.message === "string"
