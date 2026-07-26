@@ -1,11 +1,18 @@
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { z } from "zod";
 import {
+  AccountDeliveryService,
+  RegistrationReleaseService
+} from "@nova-aurora/database";
+import {
   authSecurity,
   bearerToken,
   requireIdentity,
   requestUserAgent
 } from "./auth-context.js";
+
+const release = new RegistrationReleaseService();
+const accountDelivery = new AccountDeliveryService();
 
 function idempotencyKey(app: FastifyInstance, request: FastifyRequest): string {
   const value = request.headers["idempotency-key"];
@@ -22,7 +29,8 @@ const loginSchema = z.object({
 });
 
 const registerSchema = loginSchema.extend({
-  displayName: z.string().min(2).max(120)
+  displayName: z.string().min(2).max(120),
+  inviteCode: z.string().min(8).max(160).optional()
 });
 
 const mfaChallengeSchema = z.object({
@@ -48,6 +56,10 @@ const recoveryConfirmSchema = z.object({
   newPassword: z.string().min(12).max(256)
 });
 
+const verificationConfirmSchema = z.object({
+  token: z.string().min(32).max(256)
+});
+
 const heartbeatSchema = z.object({
   locationCode: z.string().min(1).max(80).optional(),
   status: z.enum(["online", "away", "busy"]).optional()
@@ -56,12 +68,31 @@ const heartbeatSchema = z.object({
 export async function registerAuthRoutes(app: FastifyInstance): Promise<void> {
   app.post("/v1/auth/register", async (request) => {
     const body = registerSchema.parse(request.body);
-    return authSecurity.register({
-      ...body,
+    const key = idempotencyKey(app, request);
+    const replay = await release.isRegistrationReplay(key);
+    if (!replay) await release.assertRegistrationAllowed(body.email, body.inviteCode);
+    const session = await authSecurity.register({
+      email: body.email,
+      displayName: body.displayName,
+      password: body.password,
+      deviceName: body.deviceName,
       ipAddress: request.ip,
       userAgent: requestUserAgent(request),
-      idempotencyKey: idempotencyKey(app, request)
+      idempotencyKey: key
     });
+    const releaseState = replay
+      ? await release.securityState(session.identity.userId)
+      : await release.completeRegistration({
+          identity: session.identity,
+          inviteCode: body.inviteCode,
+          ipAddress: request.ip,
+          idempotencyKey: key
+        });
+    return {
+      ...session,
+      release: releaseState,
+      signature: "Tehkné Solutions"
+    };
   });
 
   app.post("/v1/auth/login", async (request) => {
@@ -84,13 +115,13 @@ export async function registerAuthRoutes(app: FastifyInstance): Promise<void> {
 
   app.post("/v1/auth/recovery/request", async (request) => {
     const body = recoveryRequestSchema.parse(request.body);
-    const result = await authSecurity.requestPasswordRecovery({
+    const result = await accountDelivery.requestPasswordRecovery({
       email: body.email,
       ipAddress: request.ip
     });
     return {
       ...result,
-      message: "Se a conta existir, as instruções de recuperação serão disponibilizadas.",
+      message: "Se a conta existir, as instruções foram encaminhadas ao e-mail cadastrado.",
       signature: "Tehkné Solutions"
     };
   });
@@ -103,6 +134,14 @@ export async function registerAuthRoutes(app: FastifyInstance): Promise<void> {
       userAgent: requestUserAgent(request)
     });
     return reply.status(204).send();
+  });
+
+  app.post("/v1/auth/email-verification/confirm", async (request) => {
+    const body = verificationConfirmSchema.parse(request.body);
+    return {
+      ...(await release.confirmEmail(body.token)),
+      signature: "Tehkné Solutions"
+    };
   });
 
   app.post("/v1/auth/refresh", async (request) => {
@@ -129,6 +168,22 @@ export async function registerAuthRoutes(app: FastifyInstance): Promise<void> {
   app.get("/v1/auth/me", async (request) =>
     requireIdentity(app, request)
   );
+
+  app.get("/v1/auth/security-state", async (request) => {
+    const identity = await requireIdentity(app, request);
+    return {
+      security: await release.securityState(identity.userId),
+      signature: "Tehkné Solutions"
+    };
+  });
+
+  app.post("/v1/auth/email-verification/resend", async (request) => {
+    const identity = await requireIdentity(app, request);
+    return {
+      ...(await release.resendVerification({ identity, ipAddress: request.ip })),
+      signature: "Tehkné Solutions"
+    };
+  });
 
   app.post("/v1/auth/mfa/setup", async (request) => {
     const identity = await requireIdentity(app, request);
