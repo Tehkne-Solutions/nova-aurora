@@ -136,7 +136,11 @@ await command("Runtime.enable");
 
 for (const path of ["/login", "/verify-email", "/recover-account", "/trust"]) {
   await navigate(path);
-  report.pages.push(await evaluate(auditExpression()));
+  const audit = await evaluate(auditExpression());
+  report.pages.push(audit);
+  if (audit.path !== path) {
+    throw new Error(`A rota pública ${path} redirecionou para ${audit.path}.`);
+  }
 }
 
 await navigate("/login");
@@ -183,7 +187,17 @@ if (exceptions.length > 0) throw new Error(`Exceções no navegador: ${exception
 
 socket.close();
 child.kill("SIGTERM");
-await rm(profile, { recursive: true, force: true });
+await Promise.race([
+  new Promise((resolve) => child.once("exit", resolve)),
+  new Promise((resolve) => setTimeout(resolve, 3_000))
+]);
+if (child.exitCode === null) {
+  child.kill("SIGKILL");
+  await new Promise((resolve) => child.once("exit", resolve));
+}
+await retry(async () => {
+  await rm(profile, { recursive: true, force: true });
+}, 5_000);
 console.log(JSON.stringify({ status: "passed", pages: report.pages.length, signature: "Tehkné Solutions" }));
 
 process.on("exit", () => {
