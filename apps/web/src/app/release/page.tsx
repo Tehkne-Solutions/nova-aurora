@@ -58,7 +58,7 @@ type State = Readonly<{
   emails: readonly Email[];
 }>;
 
-function statusClass(status: string): string {
+function statusClass(status: string): string | undefined {
   if (["passing", "sent", "active"].includes(status)) return styles.good;
   if (["blocked", "dead", "suspended", "revoked"].includes(status)) return styles.bad;
   return styles.warn;
