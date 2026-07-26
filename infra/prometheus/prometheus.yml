@@ -5,6 +5,9 @@ global:
     product: nova-aurora
     signature: Tehkné-Solutions
 
+rule_files:
+  - /etc/prometheus/alerts.yml
+
 scrape_configs:
   - job_name: nova-aurora-api
     metrics_path: /metrics
