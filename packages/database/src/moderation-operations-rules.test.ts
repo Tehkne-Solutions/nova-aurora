@@ -1,9 +1,13 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { evaluateModerationReadiness } from "./moderation-operations-rules.js";
+import {
+  calculateContinuousCoverageMinutes,
+  evaluateModerationReadiness
+} from "./moderation-operations-rules.js";
 
-test("moderation readiness passes with coverage and no overdue priority reports", () => {
+test("moderation readiness passes with continuous coverage and no overdue reports", () => {
   const state = evaluateModerationReadiness({
+    coveredMinutes: 1440,
     activeOrUpcomingModerators: 2,
     overdueCriticalReports: 0,
     overdueHighReports: 0,
@@ -13,9 +17,10 @@ test("moderation readiness passes with coverage and no overdue priority reports"
   assert.deepEqual(state.blockers, []);
 });
 
-test("moderation readiness blocks missing coverage", () => {
+test("moderation readiness blocks a gap in the 24 hour window", () => {
   const state = evaluateModerationReadiness({
-    activeOrUpcomingModerators: 0,
+    coveredMinutes: 1439,
+    activeOrUpcomingModerators: 2,
     overdueCriticalReports: 0,
     overdueHighReports: 0,
     pendingAppeals: 0
@@ -26,6 +31,7 @@ test("moderation readiness blocks missing coverage", () => {
 
 test("moderation readiness blocks overdue critical and high reports", () => {
   const state = evaluateModerationReadiness({
+    coveredMinutes: 1440,
     activeOrUpcomingModerators: 1,
     overdueCriticalReports: 1,
     overdueHighReports: 2,
@@ -33,4 +39,20 @@ test("moderation readiness blocks overdue critical and high reports", () => {
   });
   assert.equal(state.ready, false);
   assert.equal(state.blockers.length, 2);
+});
+
+test("coverage calculator stops at the first gap", () => {
+  const start = new Date("2026-07-26T00:00:00.000Z");
+  const end = new Date("2026-07-27T00:00:00.000Z");
+  const covered = calculateContinuousCoverageMinutes([
+    {
+      startsAt: "2026-07-25T23:00:00.000Z",
+      endsAt: "2026-07-26T08:00:00.000Z"
+    },
+    {
+      startsAt: "2026-07-26T08:30:00.000Z",
+      endsAt: "2026-07-27T01:00:00.000Z"
+    }
+  ], start, end);
+  assert.equal(covered, 480);
 });
