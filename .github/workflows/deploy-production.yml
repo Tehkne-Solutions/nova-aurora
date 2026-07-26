@@ -1,0 +1,131 @@
+name: Deploy production
+
+on:
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: "Tag publicada no GHCR, por exemplo 0.12.0"
+        required: true
+        type: string
+      rollback_on_failure:
+        description: "Voltar automaticamente à última tag saudável"
+        required: true
+        default: true
+        type: boolean
+
+permissions:
+  contents: read
+  packages: read
+
+concurrency:
+  group: nova-aurora-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: [self-hosted, linux, x64, nova-aurora-production]
+    environment: production
+    timeout-minutes: 30
+    env:
+      COMPOSE_FILE: infra/docker-compose.prod.yml
+      ENV_FILE: /etc/nova-aurora/nova-aurora.env
+      STATE_DIR: /var/lib/nova-aurora/deployment
+      IMAGE_TAG: ${{ inputs.image_tag }}
+      GIT_COMMIT_SHA: ${{ github.sha }}
+      ROLLBACK_ON_FAILURE: ${{ inputs.rollback_on_failure }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          clean: true
+
+      - name: Validate production host
+        run: |
+          test -f "$ENV_FILE"
+          mkdir -p "$STATE_DIR"
+          docker version
+          docker compose version
+          set -a
+          . "$ENV_FILE"
+          set +a
+          test -n "${DOMAIN:-}"
+          test -n "${SECRETS_DIR:-}"
+          test -d "$SECRETS_DIR"
+          for secret in postgres_password redis_password internal_api_token bootstrap_admin_password bootstrap_bob_password grafana_admin_password; do
+            test -s "$SECRETS_DIR/$secret.txt"
+          done
+
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create pre-deployment backup
+        run: |
+          export IMAGE_TAG GIT_COMMIT_SHA
+          docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" up -d postgres
+          docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" run --rm -e BACKUP_ONCE=true backup
+
+      - name: Deploy and verify
+        id: deploy
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          set -a
+          . "$ENV_FILE"
+          set +a
+          previous_tag=""
+          if [ -f "$STATE_DIR/current-image-tag" ]; then
+            previous_tag="$(cat "$STATE_DIR/current-image-tag")"
+          fi
+          printf '%s' "$previous_tag" > "$STATE_DIR/previous-image-tag"
+          export IMAGE_TAG GIT_COMMIT_SHA
+
+          deploy_tag() {
+            local tag="$1"
+            export IMAGE_TAG="$tag"
+            docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" pull api worker web
+            docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" up -d --remove-orphans
+            for attempt in $(seq 1 40); do
+              if curl --fail --silent --show-error --max-time 5 "https://api.$DOMAIN/health/ready" >/tmp/nova-aurora-ready.json; then
+                cat /tmp/nova-aurora-ready.json
+                return 0
+              fi
+              sleep 5
+            done
+            return 1
+          }
+
+          if deploy_tag "$IMAGE_TAG"; then
+            printf '%s' "$IMAGE_TAG" > "$STATE_DIR/current-image-tag"
+            docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" ps
+            exit 0
+          fi
+
+          docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" logs --tail=250 api worker web migrate caddy
+          if [ "$ROLLBACK_ON_FAILURE" = "true" ] && [ -n "$previous_tag" ]; then
+            echo "Deploy falhou; restaurando tag $previous_tag" >&2
+            if deploy_tag "$previous_tag"; then
+              printf '%s' "$previous_tag" > "$STATE_DIR/current-image-tag"
+              echo "Rollback concluído." >&2
+            else
+              echo "Rollback também falhou." >&2
+            fi
+          fi
+          exit 1
+
+      - name: Deployment summary
+        if: success()
+        run: |
+          set -a
+          . "$ENV_FILE"
+          set +a
+          {
+            echo "## Nova Aurora publicada"
+            echo "- Tag: \`$IMAGE_TAG\`"
+            echo "- Aplicação: https://$DOMAIN"
+            echo "- API: https://api.$DOMAIN/health/ready"
+            echo "- Operações: https://ops.$DOMAIN"
+            echo "- Assinatura: Tehkné Solutions"
+          } >> "$GITHUB_STEP_SUMMARY"
