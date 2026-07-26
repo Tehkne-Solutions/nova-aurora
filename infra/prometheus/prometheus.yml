@@ -1,0 +1,30 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    product: nova-aurora
+    signature: Tehkné-Solutions
+
+rule_files:
+  - /etc/prometheus/alerts.yml
+
+scrape_configs:
+  - job_name: nova-aurora-api
+    metrics_path: /metrics
+    authorization:
+      type: Bearer
+      credentials_file: /run/secrets/internal_api_token
+    static_configs:
+      - targets: ["api:4000"]
+
+  - job_name: nova-aurora-worker
+    metrics_path: /metrics
+    authorization:
+      type: Bearer
+      credentials_file: /run/secrets/internal_api_token
+    static_configs:
+      - targets: ["worker:4010"]
+
+  - job_name: prometheus
+    static_configs:
+      - targets: ["localhost:9090"]

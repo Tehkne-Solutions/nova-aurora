@@ -1,0 +1,108 @@
+{
+  "annotations": {"list": []},
+  "editable": false,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [],
+  "panels": [
+    {
+      "datasource": {"type": "prometheus", "uid": "nova-aurora-prometheus"},
+      "fieldConfig": {"defaults": {"mappings": [], "thresholds": {"mode": "absolute", "steps": [{"color": "red", "value": null}, {"color": "green", "value": 1}]}}, "overrides": []},
+      "gridPos": {"h": 5, "w": 6, "x": 0, "y": 0},
+      "id": 1,
+      "options": {"colorMode": "value", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto", "wideLayout": true},
+      "targets": [{"expr": "min(nova_aurora_dependency_ready)", "refId": "A"}],
+      "title": "Dependências prontas",
+      "type": "stat"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "nova-aurora-prometheus"},
+      "fieldConfig": {"defaults": {"unit": "reqps"}, "overrides": []},
+      "gridPos": {"h": 5, "w": 6, "x": 6, "y": 0},
+      "id": 2,
+      "options": {"colorMode": "value", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto", "wideLayout": true},
+      "targets": [{"expr": "sum(rate(nova_aurora_http_requests_total[5m]))", "refId": "A"}],
+      "title": "Requisições por segundo",
+      "type": "stat"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "nova-aurora-prometheus"},
+      "fieldConfig": {"defaults": {"unit": "s"}, "overrides": []},
+      "gridPos": {"h": 5, "w": 6, "x": 12, "y": 0},
+      "id": 3,
+      "options": {"colorMode": "value", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto", "wideLayout": true},
+      "targets": [{"expr": "sum(rate(nova_aurora_http_request_duration_seconds_sum[5m])) / clamp_min(sum(rate(nova_aurora_http_request_duration_seconds_count[5m])), 0.000001)", "refId": "A"}],
+      "title": "Latência média",
+      "type": "stat"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "nova-aurora-prometheus"},
+      "fieldConfig": {"defaults": {}, "overrides": []},
+      "gridPos": {"h": 5, "w": 6, "x": 18, "y": 0},
+      "id": 4,
+      "options": {"colorMode": "value", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto", "wideLayout": true},
+      "targets": [{"expr": "nova_aurora_api_active_requests", "refId": "A"}],
+      "title": "Requisições ativas",
+      "type": "stat"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "nova-aurora-prometheus"},
+      "fieldConfig": {"defaults": {"unit": "reqps"}, "overrides": []},
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 5},
+      "id": 5,
+      "options": {"legend": {"calcs": [], "displayMode": "list", "placement": "bottom", "showLegend": true}, "tooltip": {"mode": "multi", "sort": "desc"}},
+      "targets": [{"expr": "sum by (status) (rate(nova_aurora_http_requests_total[5m]))", "legendFormat": "HTTP {{status}}", "refId": "A"}],
+      "title": "Tráfego por status HTTP",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "nova-aurora-prometheus"},
+      "fieldConfig": {"defaults": {"unit": "bytes"}, "overrides": []},
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 5},
+      "id": 6,
+      "options": {"legend": {"calcs": [], "displayMode": "list", "placement": "bottom", "showLegend": true}, "tooltip": {"mode": "multi", "sort": "desc"}},
+      "targets": [
+        {"expr": "process_resident_memory_bytes", "legendFormat": "{{job}} RSS", "refId": "A"},
+        {"expr": "nodejs_heap_used_bytes", "legendFormat": "{{job}} heap", "refId": "B"}
+      ],
+      "title": "Memória dos serviços",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "nova-aurora-prometheus"},
+      "fieldConfig": {"defaults": {}, "overrides": []},
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 13},
+      "id": 7,
+      "options": {"legend": {"calcs": [], "displayMode": "list", "placement": "bottom", "showLegend": true}, "tooltip": {"mode": "multi", "sort": "desc"}},
+      "targets": [
+        {"expr": "rate(nova_aurora_worker_ticks_total[5m])", "legendFormat": "ticks/s", "refId": "A"},
+        {"expr": "rate(nova_aurora_worker_tick_failures_total[5m])", "legendFormat": "falhas/s", "refId": "B"},
+        {"expr": "rate(nova_aurora_worker_published_events_total[5m])", "legendFormat": "eventos/s", "refId": "C"}
+      ],
+      "title": "Atividade do worker",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "nova-aurora-prometheus"},
+      "fieldConfig": {"defaults": {"unit": "s", "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "yellow", "value": 90}, {"color": "red", "value": 180}]}}, "overrides": []},
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 13},
+      "id": 8,
+      "options": {"colorMode": "value", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto", "wideLayout": true},
+      "targets": [{"expr": "time() - nova_aurora_worker_last_tick_timestamp_seconds", "refId": "A"}],
+      "title": "Idade do último tick",
+      "type": "stat"
+    }
+  ],
+  "refresh": "15s",
+  "schemaVersion": 41,
+  "tags": ["nova-aurora", "tehkne-solutions", "operations"],
+  "templating": {"list": []},
+  "time": {"from": "now-6h", "to": "now"},
+  "timepicker": {},
+  "timezone": "browser",
+  "title": "Nova Aurora — Operações",
+  "uid": "nova-aurora-operations",
+  "version": 1,
+  "weekStart": ""
+}

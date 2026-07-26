@@ -1,8 +1,9 @@
+import { randomUUID } from "node:crypto";
 import Fastify, { type FastifyRequest } from "fastify";
 import cors from "@fastify/cors";
 import sensible from "@fastify/sensible";
 import { z } from "zod";
-import { MarketProductionService } from "@nova-aurora/database";
+import { closeDb, MarketProductionService } from "@nova-aurora/database";
 import { authSecurity } from "./auth-context.js";
 import { registerAuthRoutes } from "./auth-routes.js";
 import { registerBusinessOperationsRoutes } from "./business-operations-routes.js";
@@ -11,6 +12,7 @@ import { registerCityRoutes } from "./city-routes.js";
 import { snapshot, verticalSlice } from "./economy.js";
 import { registerGameplayRoutes } from "./gameplay-routes.js";
 import { registerMunicipalOperationsRoutes } from "./municipal-operations-routes.js";
+import { closeObservability, registerObservability } from "./observability.js";
 import { registerPropertyBusinessRoutes } from "./property-business-routes.js";
 import { enqueueProductionCompletion } from "./queue.js";
 import { registerRealtime } from "./realtime.js";
@@ -19,9 +21,46 @@ import {
 } from "./regional-business-management-routes.js";
 import { registerSecurity } from "./security.js";
 
+function requestId(request: { headers: Record<string, string | string[] | undefined> }): string {
+  const supplied = request.headers["x-request-id"];
+  if (typeof supplied === "string" && /^[a-zA-Z0-9._:-]{8,128}$/.test(supplied)) {
+    return supplied;
+  }
+  return randomUUID();
+}
+
+function validateRuntime(): void {
+  if (process.env.NODE_ENV !== "production") return;
+  if (!process.env.INTERNAL_API_TOKEN || process.env.INTERNAL_API_TOKEN.length < 24) {
+    throw new Error("INTERNAL_API_TOKEN deve possuir pelo menos 24 caracteres.");
+  }
+  const origins = process.env.WEB_ORIGINS ?? "";
+  if (!origins || origins.includes("localhost")) {
+    throw new Error("WEB_ORIGINS precisa conter apenas origens públicas em produção.");
+  }
+  if (process.env.TRUST_PROXY !== "true") {
+    throw new Error("TRUST_PROXY=true é obrigatório atrás do proxy de produção.");
+  }
+}
+
+validateRuntime();
+
 const app = Fastify({
-  logger: true,
-  trustProxy: process.env.TRUST_PROXY === "true"
+  logger: {
+    level: process.env.LOG_LEVEL ?? "info",
+    redact: {
+      paths: [
+        "req.headers.authorization",
+        "req.headers.cookie",
+        "req.headers['x-internal-token']",
+        "res.headers['set-cookie']"
+      ],
+      censor: "[REDACTED]"
+    }
+  },
+  trustProxy: process.env.TRUST_PROXY === "true",
+  genReqId: requestId,
+  requestIdHeader: "x-request-id"
 });
 const economy = new MarketProductionService();
 const allowedOrigins = (process.env.WEB_ORIGINS ?? "http://localhost:3000")
@@ -43,12 +82,15 @@ await app.register(cors, {
     "content-type",
     "idempotency-key",
     "x-actor-context",
-    "x-device-name"
+    "x-device-name",
+    "x-request-id"
   ],
+  exposedHeaders: ["x-request-id"],
   methods: ["GET", "POST", "DELETE", "OPTIONS"],
   maxAge: 600
 });
 await app.register(sensible);
+await registerObservability(app);
 await registerSecurity(app);
 await registerAuthRoutes(app);
 await registerRealtime(app);
@@ -76,19 +118,26 @@ async function actorId(request: FastifyRequest): Promise<string> {
   return economy.resolveUserId(email);
 }
 
-app.setErrorHandler((error, _request, reply) => {
-  app.log.error(error);
+app.setErrorHandler((error, request, reply) => {
   const details = typeof error === "object" && error !== null
     ? error as { statusCode?: unknown; name?: unknown; message?: unknown }
     : {};
   const status = typeof details.statusCode === "number"
     ? details.statusCode
     : 400;
+  app.log.error({
+    error,
+    requestId: request.id,
+    method: request.method,
+    route: request.routeOptions.url,
+    statusCode: status
+  }, "request.failed");
   return reply.status(status).send({
     error: typeof details.name === "string" ? details.name : "Error",
     message: typeof details.message === "string"
       ? details.message
       : "Falha inesperada.",
+    requestId: request.id,
     signature: "Tehkné Solutions"
   });
 });
@@ -96,6 +145,8 @@ app.setErrorHandler((error, _request, reply) => {
 app.get("/health", async () => ({
   status: "ok",
   service: "nova-aurora-api",
+  version: process.env.APP_VERSION ?? "development",
+  commit: process.env.GIT_COMMIT_SHA ?? "unknown",
   market: "price-time-priority",
   production: "bullmq-delayed",
   cityGameplay: "persistent",
@@ -107,6 +158,7 @@ app.get("/health", async () => ({
   municipalOperations: "budget-cycles-services-elections-policies-emergencies",
   identitySecurity: "bcrypt-opaque-sessions-rbac-audit-rate-limit",
   liveCity: "one-time-tickets-presence-notifications",
+  observability: "liveness-readiness-prometheus-request-id",
   signature: "Tehkné Solutions"
 }));
 
@@ -175,8 +227,8 @@ app.post("/v1/production/orders", async (request) => {
     });
   } catch (error) {
     app.log.warn(
-      { error, orderId: order.id },
-      "Fila indisponível; worker fará varredura de recuperação."
+      { error, orderId: order.id, requestId: request.id },
+      "production.queue.unavailable"
     );
   }
   return order;
@@ -194,6 +246,33 @@ app.delete<{ Params: { orderId: string } }>(
 app.get("/v1/production/orders", async (request) =>
   economy.productionOrders(await actorId(request))
 );
+
+let shuttingDown = false;
+async function shutdown(signal: string): Promise<void> {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  app.log.info({ signal }, "service.shutdown.started");
+  const forcedExit = setTimeout(() => {
+    app.log.fatal({ signal }, "service.shutdown.timeout");
+    process.exit(1);
+  }, 12_000);
+  forcedExit.unref();
+  try {
+    await app.close();
+    await closeObservability();
+    await closeDb();
+    clearTimeout(forcedExit);
+    app.log.info({ signal }, "service.shutdown.completed");
+    process.exit(0);
+  } catch (error) {
+    app.log.fatal({ error, signal }, "service.shutdown.failed");
+    process.exit(1);
+  }
+}
+
+for (const signal of ["SIGTERM", "SIGINT"] as const) {
+  process.once(signal, () => void shutdown(signal));
+}
 
 await app.listen({
   host: "0.0.0.0",

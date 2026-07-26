@@ -16,6 +16,9 @@ jogadores, governança municipal e uma camada econômica auditável.
 - PostgreSQL 17;
 - Redis 8 + BullMQ;
 - WebSocket autenticado;
+- Prometheus + Grafana;
+- Caddy com HTTPS automático;
+- Docker Compose;
 - TypeScript 5.9;
 - pnpm + Turborepo.
 
@@ -51,7 +54,49 @@ As contas demonstrativas existem somente para validação local:
 - Bob: `bob@nova-aurora.local` / `Horizonte@2026`.
 
 A API bloqueia a inicialização em `NODE_ENV=production` enquanto essas senhas
-continuarem ativas.
+continuarem ativas. O bootstrap de produção exige nova senha administrativa,
+revoga sessões antigas e desativa Bob por padrão.
+
+## Produção
+
+Arquivos principais:
+
+- `Dockerfile.api`;
+- `Dockerfile.worker`;
+- `Dockerfile.web`;
+- `infra/docker-compose.prod.yml`;
+- `.env.production.example`;
+- `infra/secrets/README.md`;
+- `docs/RUNBOOK_PRODUCTION.md`.
+
+O stack público expõe somente o Caddy. PostgreSQL, Redis, API, worker,
+Prometheus e Grafana permanecem na rede interna.
+
+Endpoints operacionais:
+
+```text
+GET /health/live
+GET /health/ready
+GET /metrics
+```
+
+O endpoint `/metrics` exige Bearer token interno.
+
+## Publicação
+
+- tags `v*` publicam API, worker e web no GHCR;
+- as imagens recebem tags semânticas, SBOM e proveniência;
+- deploys usam o ambiente protegido `production`;
+- o runner de produção mantém secrets fora do checkout;
+- cada deploy cria backup antes da atualização;
+- readiness público decide sucesso ou rollback;
+- a última tag saudável permanece registrada no servidor.
+
+## Backups
+
+O serviço de backup gera dump custom do PostgreSQL, checksum SHA-256 e metadados
+JSON. A verificação restaura em banco temporário e confirma as invariantes do
+ledger antes de considerar o backup válido.
 
 ## Sistemas implementados
 
@@ -63,6 +108,12 @@ continuarem ativas.
 - rate limiting persistente;
 - tickets WebSocket de uso único;
 - presença e notificações ao vivo;
+- liveness e readiness reais;
+- logs estruturados e request IDs;
+- métricas Prometheus e dashboard Grafana;
+- regras de alerta operacional;
+- deploy controlado e rollback;
+- backup, restore e verificação automatizada;
 - ledger de dupla entrada;
 - reservas de saldo e estoque;
 - matching por preço e prioridade temporal;
@@ -82,6 +133,7 @@ continuarem ativas.
 ## Documentação
 
 - `docs/ARCHITECTURE.md`;
+- `docs/RUNBOOK_PRODUCTION.md`;
 - `docs/SPRINT_1_PERSISTENT_ECONOMY.md`;
 - `docs/SPRINT_2_MARKET_PRODUCTION_CORE.md`;
 - `docs/SPRINT_3_CITY_GAMEPLAY.md`;
@@ -91,6 +143,7 @@ continuarem ativas.
 - `docs/SPRINT_8_REGIONAL_ECONOMY_BUSINESS_MANAGEMENT.md`;
 - `docs/SPRINT_9_CITY_EXPANSION_GOVERNANCE.md`;
 - `docs/SPRINT_10_MUNICIPAL_OPERATIONS_CIVIC_ELECTIONS.md`;
-- `docs/SPRINT_11_IDENTITY_SECURITY_LIVE_CITY.md`.
+- `docs/SPRINT_11_IDENTITY_SECURITY_LIVE_CITY.md`;
+- `docs/SPRINT_12_PUBLIC_DEPLOYMENT_OBSERVABILITY.md`.
 
 **Tehkné Solutions**

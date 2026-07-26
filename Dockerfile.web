@@ -1,0 +1,19 @@
+FROM node:22-alpine AS builder
+WORKDIR /app
+ARG NEXT_PUBLIC_API_URL
+ENV NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
+RUN corepack enable && corepack prepare pnpm@10.13.1 --activate
+COPY . .
+RUN pnpm install --frozen-lockfile
+RUN pnpm --filter @nova-aurora/web build
+
+FROM node:22-alpine AS runtime
+WORKDIR /app
+ENV NODE_ENV=production
+RUN corepack enable && corepack prepare pnpm@10.13.1 --activate \
+  && apk add --no-cache tini
+COPY --from=builder --chown=node:node /app /app
+USER node
+EXPOSE 3000
+ENTRYPOINT ["/sbin/tini","--"]
+CMD ["pnpm","--filter","@nova-aurora/web","start"]
