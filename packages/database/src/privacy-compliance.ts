@@ -242,15 +242,7 @@ export class PrivacyComplianceService extends EconomyRepositoryBase {
         WHERE owner_id=${input.identity.userId}::uuid AND status IN ('queued','processing')
       `;
       await tx`
-        UPDATE auth_sessions SET status='revoked',revoked_at=now()
-        WHERE user_id=${input.identity.userId}::uuid AND status='active'
-      `;
-      await tx`
-        UPDATE live_presence SET status='offline',last_heartbeat_at=now()
-        WHERE user_id=${input.identity.userId}::uuid
-      `;
-      await tx`
-        UPDATE users SET status='suspended',deletion_scheduled_at=${scheduledFor.toISOString()},updated_at=now()
+        UPDATE users SET deletion_scheduled_at=${scheduledFor.toISOString()},updated_at=now()
         WHERE id=${input.identity.userId}::uuid
       `;
       await tx`
