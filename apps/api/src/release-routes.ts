@@ -6,7 +6,9 @@ import {
   ReleaseOperationsService,
   TransactionalEmailService
 } from "@nova-aurora/database";
+import { BetaInsightsService } from "@nova-aurora/database/beta-insights";
 import { requireRole } from "./auth-context.js";
+import { registerBetaInsightsRoutes } from "./beta-insights-routes.js";
 import { registerLaunchAssuranceRoutes } from "./launch-assurance-routes.js";
 import { registerModerationBetaRoutes } from "./moderation-beta-routes.js";
 import { registerTrustRoutes } from "./trust-routes.js";
@@ -15,6 +17,7 @@ const release = new ReleaseOperationsService();
 const email = new TransactionalEmailService();
 const assurance = new LaunchAssuranceService();
 const beta = new BetaOperationsService();
+const insights = new BetaInsightsService();
 
 const inviteSchema = z.object({
   label: z.string().min(3).max(160),
@@ -33,20 +36,31 @@ export async function registerReleaseRoutes(app: FastifyInstance): Promise<void>
   await registerTrustRoutes(app);
   await registerLaunchAssuranceRoutes(app);
   await registerModerationBetaRoutes(app);
+  await registerBetaInsightsRoutes(app);
 
   app.get("/v1/release/state", async (request) => {
     await requireRole(app, request, ["platform-admin", "municipal-admin"]);
-    const [summary, gates, invites, emails, trustState, operations, moderation, betaState] =
-      await Promise.all([
-        release.summary(),
-        release.gates(),
-        release.invites(),
-        email.recent(100),
-        assurance.adminState(),
-        assurance.operationsState(),
-        beta.moderationState(),
-        beta.state()
-      ]);
+    const [
+      summary,
+      gates,
+      invites,
+      emails,
+      trustState,
+      operations,
+      moderation,
+      betaState,
+      betaInsights
+    ] = await Promise.all([
+      release.summary(),
+      release.gates(),
+      release.invites(),
+      email.recent(100),
+      assurance.adminState(),
+      assurance.operationsState(),
+      beta.moderationState(),
+      beta.state(),
+      insights.adminState()
+    ]);
     return {
       summary,
       gates,
@@ -56,6 +70,7 @@ export async function registerReleaseRoutes(app: FastifyInstance): Promise<void>
       operations,
       moderation,
       beta: betaState,
+      betaInsights,
       signature: "Tehkné Solutions"
     };
   });
@@ -75,7 +90,11 @@ export async function registerReleaseRoutes(app: FastifyInstance): Promise<void>
     async (request, reply) => {
       const identity = await requireRole(app, request, ["platform-admin"]);
       const body = gateSchema.parse(request.body);
-      await release.updateGate({ actorId: identity.userId, key: request.params.gateKey, ...body });
+      await release.updateGate({
+        actorId: identity.userId,
+        key: request.params.gateKey,
+        ...body
+      });
       return reply.status(204).send();
     }
   );
