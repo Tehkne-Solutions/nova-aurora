@@ -29,12 +29,15 @@ export async function enforceReleaseGate(
 ): Promise<void> {
   if (!mustBeReleased(request)) return;
   try {
+    await beta.preparePlayerAccess(identity.userId);
     await release.assertMutableAccess(identity.userId);
     await assurance.assertPlayerReady(identity.userId);
     await beta.assertPlayerAccess(identity.userId);
   } catch (error) {
     throw app.httpErrors.forbidden(
-      error instanceof Error ? error.message : "Conta ainda não liberada para operações."
+      error instanceof Error
+        ? error.message
+        : "Conta ainda não liberada para operações."
     );
   }
 }
