@@ -13,12 +13,20 @@ export type TrustReportView = Readonly<{
   priority: string;
   status: string;
   assignedTo: string | null;
+  firstResponseDueAt: string | null;
+  resolutionDueAt: string | null;
+  acknowledgedAt: string | null;
+  escalatedAt: string | null;
   createdAt: string;
   updatedAt: string;
 }>;
 
 function sha256(value: string): string {
   return createHash("sha256").update(value).digest("hex");
+}
+
+function iso(value: unknown): string | null {
+  return value ? new Date(String(value)).toISOString() : null;
 }
 
 export class ModerationService extends EconomyRepositoryBase {
@@ -77,6 +85,11 @@ export class ModerationService extends EconomyRepositoryBase {
       const rows = await tx`
         UPDATE trust_reports SET status=${input.status},priority=${input.priority},
           assigned_to=COALESCE(assigned_to,${input.actorId}::uuid),updated_at=now(),
+          acknowledged_at=CASE
+            WHEN ${input.status} IN ('investigating','actioned','closed','dismissed')
+            THEN COALESCE(acknowledged_at,now())
+            ELSE acknowledged_at
+          END,
           closed_at=CASE WHEN ${input.status} IN ('closed','dismissed') THEN now() ELSE NULL END
         WHERE id=${input.reportId}::uuid RETURNING id
       `;
@@ -103,6 +116,10 @@ export class ModerationService extends EconomyRepositoryBase {
       summary: String(row.summary), details: String(row.details_plaintext),
       priority: String(row.priority), status: String(row.status),
       assignedTo: row.assigned_to ? String(row.assigned_to) : null,
+      firstResponseDueAt: iso(row.first_response_due_at),
+      resolutionDueAt: iso(row.resolution_due_at),
+      acknowledgedAt: iso(row.acknowledged_at),
+      escalatedAt: iso(row.escalated_at),
       createdAt: new Date(String(row.created_at)).toISOString(),
       updatedAt: new Date(String(row.updated_at)).toISOString()
     }));

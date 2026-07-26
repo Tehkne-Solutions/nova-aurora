@@ -86,6 +86,22 @@ export {
   type RequiredServiceComponent
 } from "./launch-assurance-rules.js";
 export {
+  BetaOperationsService,
+  type BetaControlView,
+  type BetaWaveView,
+  type ControlledBetaReadiness,
+  type ModerationActionView,
+  type ModerationAppealView,
+  type ModerationReadiness,
+  type ModerationShiftView,
+  type RolloutDecision
+} from "./beta-operations.js";
+export {
+  evaluateControlledBetaReadiness,
+  evaluateRolloutObservation
+} from "./controlled-beta-rules.js";
+export { evaluateModerationReadiness } from "./moderation-operations-rules.js";
+export {
   EconomyIntegrityService,
   evaluateMarketOrderIntegrity,
   recordTradeSurveillance,
