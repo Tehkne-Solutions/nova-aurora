@@ -159,12 +159,13 @@ export class PrivacyComplianceService extends EconomyRepositoryBase {
           WHERE owner_id=${identity.userId}::uuid ORDER BY created_at
         `,
         this.sql`
-          SELECT entry.id,entry.transaction_id,entry.amount_minor,entry.memo,entry.created_at,
-            account.code account_code
+          SELECT entry.id,entry.transaction_id,entry.amount_minor,entry.memo,
+            ledger_transaction.created_at,account.code account_code
           FROM ledger_entries entry
           JOIN ledger_accounts account ON account.id=entry.account_id
+          JOIN ledger_transactions ledger_transaction ON ledger_transaction.id=entry.transaction_id
           WHERE account.owner_id=${identity.userId}::uuid
-          ORDER BY entry.created_at DESC LIMIT 10000
+          ORDER BY ledger_transaction.created_at DESC LIMIT 10000
         `,
         this.sql`
           SELECT orders.id,orders.side,item.code item_code,orders.quantity_minor,
