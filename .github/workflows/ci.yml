@@ -35,6 +35,7 @@ jobs:
       PUBLIC_REGISTRATION_MODE: open
       TRANSACTIONAL_EMAIL_FROM: Nova Aurora CI <no-reply@nova-aurora.local>
       TRANSACTIONAL_EMAIL_TOKEN: ci-transactional-email-token-1234567890
+      WEB_ORIGINS: http://localhost:3000,http://127.0.0.1:3000
     steps:
       - uses: actions/checkout@v6
 
@@ -86,11 +87,70 @@ jobs:
           name: build-diagnostics
           path: build.log
 
+      - name: Start release candidate services
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          nohup pnpm --filter @nova-aurora/api start > api-smoke.log 2>&1 &
+          echo $! > api-smoke.pid
+          nohup pnpm --filter @nova-aurora/web start > web-smoke.log 2>&1 &
+          echo $! > web-smoke.pid
+          for attempt in $(seq 1 60); do
+            api_ready=false
+            web_ready=false
+            curl --fail --silent http://127.0.0.1:4000/health >/dev/null && api_ready=true || true
+            curl --fail --silent http://127.0.0.1:3000/login >/dev/null && web_ready=true || true
+            if [ "$api_ready" = true ] && [ "$web_ready" = true ]; then
+              exit 0
+            fi
+            sleep 1
+          done
+          cat api-smoke.log || true
+          cat web-smoke.log || true
+          exit 1
+
+      - name: Browser E2E and accessibility gate
+        env:
+          API_URL: http://127.0.0.1:4000
+          WEB_URL: http://127.0.0.1:3000
+          RELEASE_QA_REPORT: release-browser-report.json
+        run: node infra/qa/browser-e2e.mjs
+
+      - name: Concurrent load smoke gate
+        env:
+          API_URL: http://127.0.0.1:4000
+          WEB_URL: http://127.0.0.1:3000
+          LOAD_QA_REPORT: release-load-report.json
+          LOAD_CONCURRENCY: 20
+          LOAD_REQUESTS_PER_TARGET: 80
+          LOAD_P95_LIMIT_MS: 2500
+        run: node infra/qa/load-smoke.mjs
+
+      - name: Upload release QA evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-qa-evidence
+          path: |
+            release-browser-report.json
+            release-load-report.json
+            api-smoke.log
+            web-smoke.log
+          if-no-files-found: ignore
+
+      - name: Stop release candidate services
+        if: always()
+        run: |
+          test -f api-smoke.pid && kill "$(cat api-smoke.pid)" || true
+          test -f web-smoke.pid && kill "$(cat web-smoke.pid)" || true
+
       - name: Validate scripts and dashboards
         run: |
           node --check infra/docker/runtime-secrets.mjs
           node --check infra/docker/run-service.mjs
           node --check infra/docker/migrate-and-secure.mjs
+          node --check infra/qa/browser-e2e.mjs
+          node --check infra/qa/load-smoke.mjs
           sh -n infra/backup/backup.sh
           sh -n infra/backup/restore.sh
           sh -n infra/backup/verify.sh
@@ -169,3 +229,5 @@ jobs:
             typecheck.log
             test.log
             build.log
+            api-smoke.log
+            web-smoke.log
