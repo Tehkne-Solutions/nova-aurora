@@ -4,7 +4,7 @@ import {
   REQUIRED_DOCUMENT_KEYS,
   REQUIRED_REVIEW_TYPES,
   evaluateTrustReadiness
-} from "./trust-readiness.js";
+} from "./trust-readiness-rules.js";
 
 test("mantém lançamento bloqueado quando revisões estão pendentes", () => {
   const result = evaluateTrustReadiness({
