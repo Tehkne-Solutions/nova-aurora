@@ -20,6 +20,13 @@ x-app-secrets: &app-secrets
   - redis_password
   - internal_api_token
 
+x-node-runtime: &node-runtime
+  restart: unless-stopped
+  networks: [backend]
+  secrets: *app-secrets
+  security_opt: ["no-new-privileges:true"]
+  stop_grace_period: 20s
+
 services:
   postgres:
     image: postgres:17-alpine
@@ -28,24 +35,16 @@ services:
       POSTGRES_DB: ${POSTGRES_DB:-nova_aurora}
       POSTGRES_USER: ${POSTGRES_USER:-nova_aurora}
       POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
-    secrets:
-      - postgres_password
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-    networks:
-      - backend
+    secrets: [postgres_password]
+    volumes: [postgres_data:/var/lib/postgresql/data]
+    networks: [backend]
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-nova_aurora} -d ${POSTGRES_DB:-nova_aurora}"]
       interval: 5s
       timeout: 5s
       retries: 20
       start_period: 10s
-    security_opt:
-      - no-new-privileges:true
-    deploy:
-      resources:
-        limits:
-          memory: 2G
+    security_opt: ["no-new-privileges:true"]
 
   redis:
     image: redis:8-alpine
@@ -54,24 +53,16 @@ services:
       - /bin/sh
       - -ec
       - exec redis-server --appendonly yes --appendfsync everysec --requirepass "$$(cat /run/secrets/redis_password)"
-    secrets:
-      - redis_password
-    volumes:
-      - redis_data:/data
-    networks:
-      - backend
+    secrets: [redis_password]
+    volumes: [redis_data:/data]
+    networks: [backend]
     healthcheck:
       test: ["CMD-SHELL", "redis-cli -a \"$$(cat /run/secrets/redis_password)\" ping | grep PONG"]
       interval: 5s
       timeout: 5s
       retries: 20
       start_period: 5s
-    security_opt:
-      - no-new-privileges:true
-    deploy:
-      resources:
-        limits:
-          memory: 512M
+    security_opt: ["no-new-privileges:true"]
 
   migrate:
     image: ${IMAGE_REGISTRY:-ghcr.io/tehkne-solutions}/nova-aurora-api:${IMAGE_TAG:-latest}
@@ -90,120 +81,83 @@ services:
       - bootstrap_admin_password
       - bootstrap_bob_password
     command: ["node", "infra/docker/migrate-and-secure.mjs"]
-    networks:
-      - backend
+    networks: [backend]
     depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
     restart: "no"
-    security_opt:
-      - no-new-privileges:true
+    security_opt: ["no-new-privileges:true"]
 
   api:
+    <<: *node-runtime
     image: ${IMAGE_REGISTRY:-ghcr.io/tehkne-solutions}/nova-aurora-api:${IMAGE_TAG:-latest}
     build:
       context: ..
       dockerfile: Dockerfile.api
-    restart: unless-stopped
     environment:
       <<: *app-environment
       API_PORT: "4000"
       WEB_ORIGINS: https://${DOMAIN:?DOMAIN obrigatório}
       TRUST_PROXY: "true"
-    secrets: *app-secrets
-    networks:
-      - backend
     depends_on:
-      migrate:
-        condition: service_completed_successfully
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
+      migrate: { condition: service_completed_successfully }
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
     healthcheck:
       test: ["CMD", "node", "-e", "fetch('http://localhost:4000/health/ready').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
       interval: 15s
       timeout: 5s
       retries: 10
       start_period: 20s
-    security_opt:
-      - no-new-privileges:true
-    stop_grace_period: 20s
-    deploy:
-      resources:
-        limits:
-          memory: 1G
 
   worker:
+    <<: *node-runtime
     image: ${IMAGE_REGISTRY:-ghcr.io/tehkne-solutions}/nova-aurora-worker:${IMAGE_TAG:-latest}
     build:
       context: ..
       dockerfile: Dockerfile.worker
-    restart: unless-stopped
     environment:
       <<: *app-environment
       WORKER_HEALTH_PORT: "4010"
       ECONOMY_TICK_SECONDS: ${ECONOMY_TICK_SECONDS:-60}
-    secrets: *app-secrets
-    networks:
-      - backend
     depends_on:
-      migrate:
-        condition: service_completed_successfully
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
+      migrate: { condition: service_completed_successfully }
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
     healthcheck:
       test: ["CMD", "node", "-e", "fetch('http://localhost:4010/health/ready').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
       interval: 15s
       timeout: 5s
       retries: 10
       start_period: 20s
-    security_opt:
-      - no-new-privileges:true
-    stop_grace_period: 20s
-    deploy:
-      resources:
-        limits:
-          memory: 768M
 
   web:
+    restart: unless-stopped
     image: ${IMAGE_REGISTRY:-ghcr.io/tehkne-solutions}/nova-aurora-web:${IMAGE_TAG:-latest}
     build:
       context: ..
       dockerfile: Dockerfile.web
       args:
         NEXT_PUBLIC_API_URL: https://api.${DOMAIN:?DOMAIN obrigatório}
-    restart: unless-stopped
     environment:
       NODE_ENV: production
       NEXT_PUBLIC_API_URL: https://api.${DOMAIN:?DOMAIN obrigatório}
       APP_VERSION: ${APP_VERSION:-development}
       GIT_COMMIT_SHA: ${GIT_COMMIT_SHA:-unknown}
-    networks:
-      - backend
+    networks: [backend]
     depends_on:
-      api:
-        condition: service_healthy
+      api: { condition: service_healthy }
     healthcheck:
       test: ["CMD", "node", "-e", "fetch('http://localhost:3000/login').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
       interval: 20s
       timeout: 5s
       retries: 10
       start_period: 30s
-    security_opt:
-      - no-new-privileges:true
+    security_opt: ["no-new-privileges:true"]
     stop_grace_period: 20s
-    deploy:
-      resources:
-        limits:
-          memory: 1G
 
   prometheus:
-    image: prom/prometheus:v3.9.1
+    image: prom/prometheus:v3.11.3
     restart: unless-stopped
     command:
       - --config.file=/etc/prometheus/prometheus.yml
@@ -214,24 +168,15 @@ services:
       - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - ./prometheus/alerts.yml:/etc/prometheus/alerts.yml:ro
       - prometheus_data:/prometheus
-    secrets:
-      - internal_api_token
-    networks:
-      - backend
+    secrets: [internal_api_token]
+    networks: [backend]
     depends_on:
-      api:
-        condition: service_healthy
-      worker:
-        condition: service_healthy
-    security_opt:
-      - no-new-privileges:true
-    deploy:
-      resources:
-        limits:
-          memory: 1G
+      api: { condition: service_healthy }
+      worker: { condition: service_healthy }
+    security_opt: ["no-new-privileges:true"]
 
   grafana:
-    image: grafana/grafana:12.3.2
+    image: grafana/grafana:13.1.0
     restart: unless-stopped
     environment:
       GF_SERVER_DOMAIN: ops.${DOMAIN:?DOMAIN obrigatório}
@@ -242,22 +187,14 @@ services:
       GF_AUTH_ANONYMOUS_ENABLED: "false"
       GF_ANALYTICS_REPORTING_ENABLED: "false"
       GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
-    secrets:
-      - grafana_admin_password
+    secrets: [grafana_admin_password]
     volumes:
       - ./grafana/provisioning:/etc/grafana/provisioning:ro
       - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
       - grafana_data:/var/lib/grafana
-    networks:
-      - backend
-    depends_on:
-      - prometheus
-    security_opt:
-      - no-new-privileges:true
-    deploy:
-      resources:
-        limits:
-          memory: 768M
+    networks: [backend]
+    depends_on: [prometheus]
+    security_opt: ["no-new-privileges:true"]
 
   backup:
     image: postgres:17-alpine
@@ -272,25 +209,17 @@ services:
       BACKUP_INTERVAL_SECONDS: ${BACKUP_INTERVAL_SECONDS:-86400}
       BACKUP_RETENTION_DAYS: ${BACKUP_RETENTION_DAYS:-14}
     command: ["/bin/sh", "/opt/nova-aurora/backup.sh"]
-    secrets:
-      - postgres_password
+    secrets: [postgres_password]
     volumes:
       - ./backup:/opt/nova-aurora:ro
       - backup_data:/backups
-    networks:
-      - backend
+    networks: [backend]
     depends_on:
-      postgres:
-        condition: service_healthy
-    security_opt:
-      - no-new-privileges:true
-    deploy:
-      resources:
-        limits:
-          memory: 512M
+      postgres: { condition: service_healthy }
+    security_opt: ["no-new-privileges:true"]
 
   caddy:
-    image: caddy:2.10.2-alpine
+    image: caddy:2.11.3-alpine
     restart: unless-stopped
     environment:
       DOMAIN: ${DOMAIN:?DOMAIN obrigatório}
@@ -303,22 +232,12 @@ services:
       - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data
       - caddy_config:/config
-    networks:
-      - edge
-      - backend
+    networks: [edge, backend]
     depends_on:
-      web:
-        condition: service_healthy
-      api:
-        condition: service_healthy
-      grafana:
-        condition: service_started
-    security_opt:
-      - no-new-privileges:true
-    deploy:
-      resources:
-        limits:
-          memory: 256M
+      web: { condition: service_healthy }
+      api: { condition: service_healthy }
+      grafana: { condition: service_started }
+    security_opt: ["no-new-privileges:true"]
 
 secrets:
   postgres_password:
