@@ -1,19 +1,21 @@
 "use client";
 
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import styles from "../launch-ops.module.css";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
 
 export default function GuardianPage() {
-  const search = useSearchParams();
-  const [token, setToken] = useState(search.get("token") ?? "");
+  const [token, setToken] = useState("");
   const [guardianName, setGuardianName] = useState("");
   const [accepted, setAccepted] = useState(false);
   const [message, setMessage] = useState("Revise a declaração antes de decidir.");
   const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    setToken(new URLSearchParams(window.location.search).get("token") ?? "");
+  }, []);
 
   async function decide(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
