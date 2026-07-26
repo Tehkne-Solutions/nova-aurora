@@ -5,6 +5,7 @@ import {
   requireIdentity,
   requestUserAgent
 } from "./auth-context.js";
+import { enforceReleaseGate } from "./release-gate.js";
 
 function hash(value: string): string {
   return createHash("sha256").update(value).digest("hex");
@@ -69,6 +70,7 @@ export async function registerSecurity(app: FastifyInstance): Promise<void> {
       }
     }
 
+    await enforceReleaseGate(app, request, subject);
     request.headers["x-actor-email"] = subject.email;
     requestIdentities.set(request, {
       actorUserId: identity.userId,
