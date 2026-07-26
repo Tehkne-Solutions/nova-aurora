@@ -8,6 +8,10 @@
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
+    },
+    "./beta-insights": {
+      "types": "./dist/beta-insights.d.ts",
+      "import": "./dist/beta-insights.js"
     }
   },
   "scripts": {
