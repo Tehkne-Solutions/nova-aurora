@@ -1,11 +1,11 @@
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import {
-  LiveSecurityService,
+  StrongIdentityService,
   type AuthenticatedIdentity,
   type UserRole
 } from "@nova-aurora/database";
 
-export const authSecurity = new LiveSecurityService();
+export const authSecurity = new StrongIdentityService();
 
 export function requestUserAgent(request: FastifyRequest): string | undefined {
   const value = request.headers["user-agent"];
