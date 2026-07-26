@@ -1,0 +1,89 @@
+name: Sprint 13 runtime integration
+
+on:
+  push:
+    branches: [agent/economy-integrity-compliance]
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: agent/economy-integrity-compliance
+          fetch-depth: 0
+      - name: Integrate compliance runtime
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          server = Path('apps/api/src/server.ts')
+          text = server.read_text(encoding='utf-8')
+          text = text.replace(
+              'import { registerCityGovernanceRoutes } from "./city-governance-routes.js";\n',
+              'import { registerCityGovernanceRoutes } from "./city-governance-routes.js";\nimport { registerComplianceRoutes } from "./compliance-routes.js";\n'
+          )
+          text = text.replace(
+              'await registerAuthRoutes(app);\nawait registerRealtime(app);',
+              'await registerAuthRoutes(app);\nawait registerComplianceRoutes(app);\nawait registerRealtime(app);'
+          )
+          text = text.replace(
+              '  observability: "liveness-readiness-prometheus-request-id",\n',
+              '  observability: "liveness-readiness-prometheus-request-id",\n  economyIntegrity: "mfa-privacy-antifraud-limits-circuit-breakers",\n'
+          )
+          server.write_text(text, encoding='utf-8')
+
+          worker = Path('apps/worker/src/worker.ts')
+          text = worker.read_text(encoding='utf-8')
+          text = text.replace(
+              'import { closeDb, db, MarketProductionService } from "@nova-aurora/database";',
+              'import { closeDb, db, MarketProductionService, PrivacyComplianceService } from "@nova-aurora/database";'
+          )
+          text = text.replace(
+              'const economy = new MarketProductionService();\n',
+              'const economy = new MarketProductionService();\nconst privacy = new PrivacyComplianceService();\n'
+          )
+          text = text.replace(
+              '  completedJobs: 0,\n  failedJobs: 0,',
+              '  completedJobs: 0,\n  failedJobs: 0,\n  processedDeletions: 0,'
+          )
+          text = text.replace(
+              '  const publishedEvents = await publishOutbox();\n  metrics.ticks += 1;',
+              '  const publishedEvents = await publishOutbox();\n  const processedDeletions = await privacy.processDueDeletions(25);\n  metrics.ticks += 1;'
+          )
+          text = text.replace(
+              '  metrics.publishedEvents += publishedEvents;\n  metrics.lastTickTimestamp = Date.now();',
+              '  metrics.publishedEvents += publishedEvents;\n  metrics.processedDeletions += processedDeletions;\n  metrics.lastTickTimestamp = Date.now();'
+          )
+          text = text.replace(
+              '    publishedEvents,\n    durationMs: Date.now() - started',
+              '    publishedEvents,\n    processedDeletions,\n    durationMs: Date.now() - started'
+          )
+          text = text.replace(
+              '    `nova_aurora_worker_jobs_total{result="failure"} ${metrics.failedJobs}`,\n',
+              '    `nova_aurora_worker_jobs_total{result="failure"} ${metrics.failedJobs}`,\n    "# HELP nova_aurora_worker_privacy_deletions_total Privacy deletions processed.",\n    "# TYPE nova_aurora_worker_privacy_deletions_total counter",\n    `nova_aurora_worker_privacy_deletions_total ${metrics.processedDeletions}`,\n'
+          )
+          worker.write_text(text, encoding='utf-8')
+
+          privacy = Path('packages/database/src/privacy-compliance.ts')
+          text = privacy.read_text(encoding='utf-8')
+          text = text.replace('''      await tx`\n        UPDATE auth_sessions SET status='revoked',revoked_at=now()\n        WHERE user_id=${input.identity.userId}::uuid AND status='active'\n      `;\n      await tx`\n        UPDATE live_presence SET status='offline',last_heartbeat_at=now()\n        WHERE user_id=${input.identity.userId}::uuid\n      `;\n      await tx`\n        UPDATE users SET status='suspended',deletion_scheduled_at=${scheduledFor.toISOString()},updated_at=now()\n        WHERE id=${input.identity.userId}::uuid\n      `;''', '''      await tx`\n        UPDATE users SET deletion_scheduled_at=${scheduledFor.toISOString()},updated_at=now()\n        WHERE id=${input.identity.userId}::uuid\n      `;''')
+          privacy.write_text(text, encoding='utf-8')
+
+          auth = Path('apps/web/src/app/auth-provider.tsx')
+          text = auth.read_text(encoding='utf-8')
+          text = text.replace('    "/account"\n', '    "/account",\n    "/integrity"\n')
+          auth.write_text(text, encoding='utf-8')
+          PY
+          rm .github/workflows/sprint13-runtime-integration.yml
+      - name: Commit integration
+        run: |
+          git config user.name "Tehkné Solutions CI"
+          git config user.email "ci@tehkne.solutions"
+          git add apps/api/src/server.ts apps/worker/src/worker.ts packages/database/src/privacy-compliance.ts apps/web/src/app/auth-provider.tsx .github/workflows/sprint13-runtime-integration.yml
+          git commit -m "feat: integrate compliance runtime and deletion processing"
+          git push origin HEAD:agent/economy-integrity-compliance
