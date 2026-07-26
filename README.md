@@ -7,7 +7,7 @@ jogadores, governança municipal e uma camada econômica auditável.
 
 ## Vertical slice atual
 
-`identidade → cidade → trabalho → produção → empresa → mercado → governança → operação municipal → ledger`
+`identidade forte → cidade → trabalho → produção → empresa → mercado protegido → governança → compliance → ledger`
 
 ## Stack
 
@@ -42,7 +42,8 @@ Acesse:
 - gestão regional: `http://localhost:3000/management`;
 - governança: `http://localhost:3000/governance`;
 - prefeitura: `http://localhost:3000/municipality`;
-- identidade e segurança: `http://localhost:3000/account`;
+- identidade e privacidade: `http://localhost:3000/account`;
+- integridade econômica: `http://localhost:3000/integrity`;
 - dashboard econômico: `http://localhost:3000/dashboard`;
 - API: `http://localhost:4000/health`.
 
@@ -98,14 +99,36 @@ O serviço de backup gera dump custom do PostgreSQL, checksum SHA-256 e metadado
 JSON. A verificação restaura em banco temporário e confirma as invariantes do
 ledger antes de considerar o backup válido.
 
+## Natureza dos ativos
+
+Por padrão, itens, Créditos Aurora, terrenos e participações são ativos virtuais
+internos de jogo. Eles não representam automaticamente NFT, valor mobiliário,
+direito de saque, participação societária externa ou promessa de rentabilidade.
+
+Transferência externa começa desabilitada. Qualquer preparação para blockchain
+exige classificação explícita, revisão jurídica e mudança auditada com segunda
+aprovação administrativa.
+
 ## Sistemas implementados
 
 - autenticação por senha com bcrypt;
+- recuperação de conta com token opaco;
+- TOTP e códigos de recuperação;
+- cifragem separada dos segredos MFA;
 - sessões opacas persistidas somente como hash;
 - rotação e revogação de sessão;
 - papéis e autorização;
+- consentimentos e histórico;
+- exportação de dados;
+- exclusão com carência e pseudonimização;
+- retenções legais;
 - trilha de auditoria;
 - rate limiting persistente;
+- antifraude e perfis de risco;
+- limites por ordem, dia, velocidade e ordens abertas;
+- circuit breakers por preço;
+- governança de mudanças com dupla aprovação;
+- classificação de ativos e barreira de tokenização;
 - tickets WebSocket de uso único;
 - presença e notificações ao vivo;
 - liveness e readiness reais;
@@ -144,6 +167,7 @@ ledger antes de considerar o backup válido.
 - `docs/SPRINT_9_CITY_EXPANSION_GOVERNANCE.md`;
 - `docs/SPRINT_10_MUNICIPAL_OPERATIONS_CIVIC_ELECTIONS.md`;
 - `docs/SPRINT_11_IDENTITY_SECURITY_LIVE_CITY.md`;
-- `docs/SPRINT_12_PUBLIC_DEPLOYMENT_OBSERVABILITY.md`.
+- `docs/SPRINT_12_PUBLIC_DEPLOYMENT_OBSERVABILITY.md`;
+- `docs/SPRINT_13_ECONOMY_INTEGRITY_COMPLIANCE.md`.
 
 **Tehkné Solutions**
