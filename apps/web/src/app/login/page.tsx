@@ -277,7 +277,7 @@ export default function LoginPage() {
               </label>
               <label>
                 Senha
-                <input type="password" value={password} onChange={(event) => setPassword(event.target.value)} minLength={12} maxLength={256} autoComplete={mode === "login" ? "current-password" : "new-password"} required />
+                <input type="password" value={password} onChange={(event) => setPassword(event.target.value)} minLength={mode === "login" ? 1 : 12} maxLength={256} autoComplete={mode === "login" ? "current-password" : "new-password"} required />
               </label>
             </>
           )}
