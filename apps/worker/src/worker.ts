@@ -2,7 +2,7 @@ import { timingSafeEqual } from "node:crypto";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { Worker } from "bullmq";
 import { Redis } from "ioredis";
-import { closeDb, db, MarketProductionService } from "@nova-aurora/database";
+import { closeDb, db, MarketProductionService, PrivacyComplianceService } from "@nova-aurora/database";
 
 function connectionOptions(): {
   host: string;
@@ -65,6 +65,7 @@ async function within<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
 }
 
 const economy = new MarketProductionService();
+const privacy = new PrivacyComplianceService();
 const redisUrl = process.env.REDIS_URL ?? "redis://localhost:6379";
 const publisher = new Redis(redisUrl, { maxRetriesPerRequest: null });
 const sweepSeconds = Number(process.env.ECONOMY_TICK_SECONDS ?? 30);
@@ -76,6 +77,7 @@ const metrics = {
   publishedEvents: 0,
   completedJobs: 0,
   failedJobs: 0,
+  processedDeletions: 0,
   lastTickTimestamp: 0,
   postgresReady: false,
   redisReady: false
@@ -132,13 +134,16 @@ async function tick(): Promise<void> {
   const started = Date.now();
   const completedProduction = await sweepDueProduction();
   const publishedEvents = await publishOutbox();
+  const processedDeletions = await privacy.processDueDeletions(25);
   metrics.ticks += 1;
   metrics.completedProduction += completedProduction;
   metrics.publishedEvents += publishedEvents;
+  metrics.processedDeletions += processedDeletions;
   metrics.lastTickTimestamp = Date.now();
   log("info", "world.tick.completed", {
     completedProduction,
     publishedEvents,
+    processedDeletions,
     durationMs: Date.now() - started
   });
 }
@@ -183,6 +188,9 @@ function renderMetrics(): string {
     "# TYPE nova_aurora_worker_jobs_total counter",
     `nova_aurora_worker_jobs_total{result="success"} ${metrics.completedJobs}`,
     `nova_aurora_worker_jobs_total{result="failure"} ${metrics.failedJobs}`,
+    "# HELP nova_aurora_worker_privacy_deletions_total Privacy deletions processed.",
+    "# TYPE nova_aurora_worker_privacy_deletions_total counter",
+    `nova_aurora_worker_privacy_deletions_total ${metrics.processedDeletions}`,
     "# HELP nova_aurora_worker_last_tick_timestamp_seconds Last successful tick timestamp.",
     "# TYPE nova_aurora_worker_last_tick_timestamp_seconds gauge",
     `nova_aurora_worker_last_tick_timestamp_seconds ${metrics.lastTickTimestamp / 1000}`,

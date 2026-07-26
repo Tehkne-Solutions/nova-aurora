@@ -8,6 +8,7 @@ import { authSecurity } from "./auth-context.js";
 import { registerAuthRoutes } from "./auth-routes.js";
 import { registerBusinessOperationsRoutes } from "./business-operations-routes.js";
 import { registerCityGovernanceRoutes } from "./city-governance-routes.js";
+import { registerComplianceRoutes } from "./compliance-routes.js";
 import { registerCityRoutes } from "./city-routes.js";
 import { snapshot, verticalSlice } from "./economy.js";
 import { registerGameplayRoutes } from "./gameplay-routes.js";
@@ -93,6 +94,7 @@ await app.register(sensible);
 await registerObservability(app);
 await registerSecurity(app);
 await registerAuthRoutes(app);
+await registerComplianceRoutes(app);
 await registerRealtime(app);
 await registerCityRoutes(app);
 await registerGameplayRoutes(app);
@@ -159,6 +161,7 @@ app.get("/health", async () => ({
   identitySecurity: "bcrypt-opaque-sessions-rbac-audit-rate-limit",
   liveCity: "one-time-tickets-presence-notifications",
   observability: "liveness-readiness-prometheus-request-id",
+  economyIntegrity: "mfa-privacy-antifraud-limits-circuit-breakers",
   signature: "Tehkné Solutions"
 }));
 

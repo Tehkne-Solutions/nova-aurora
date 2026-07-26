@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       image_tag:
-        description: "Tag publicada no GHCR, por exemplo 0.12.0"
+        description: "Tag publicada no GHCR, por exemplo 0.13.0"
         required: true
         type: string
       rollback_on_failure:
@@ -50,7 +50,7 @@ jobs:
           test -n "${DOMAIN:-}"
           test -n "${SECRETS_DIR:-}"
           test -d "$SECRETS_DIR"
-          for secret in postgres_password redis_password internal_api_token bootstrap_admin_password bootstrap_bob_password grafana_admin_password; do
+          for secret in postgres_password redis_password internal_api_token data_encryption_key bootstrap_admin_password bootstrap_bob_password grafana_admin_password; do
             test -s "$SECRETS_DIR/$secret.txt"
           done
 

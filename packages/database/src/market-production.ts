@@ -1,9 +1,9 @@
-import { MarketRepository } from "./market-repository.js";
+import { IntegrityMarketRepository } from "./integrity-market-repository.js";
 import { ProductionRepository } from "./production-repository.js";
 import type { OrderSide } from "./economy-types.js";
 
 export class MarketProductionService {
-  private readonly market = new MarketRepository();
+  private readonly market = new IntegrityMarketRepository();
   private readonly production = new ProductionRepository();
 
   resolveUserId(email: string) {
