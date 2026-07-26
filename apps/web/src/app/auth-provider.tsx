@@ -62,12 +62,13 @@ function isProtectedPath(pathname: string): boolean {
   ].some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`));
 }
 
-function isPublicAuthRequest(requestUrl: string): boolean {
+function isPublicApiRequest(requestUrl: string): boolean {
   return requestUrl.includes("/v1/auth/login")
     || requestUrl.includes("/v1/auth/register")
     || requestUrl.includes("/v1/auth/mfa/complete")
     || requestUrl.includes("/v1/auth/recovery/")
-    || requestUrl.includes("/v1/auth/email-verification/confirm");
+    || requestUrl.includes("/v1/auth/email-verification/confirm")
+    || requestUrl.includes("/v1/trust/public");
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
@@ -95,13 +96,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       const activeToken = localStorage.getItem(TOKEN_KEY);
       const activeIdentity = storedIdentity();
-      const publicAuth = isPublicAuthRequest(requestUrl);
+      const publicRequest = isPublicApiRequest(requestUrl);
       const headers = new Headers(input instanceof Request ? input.headers : undefined);
       new Headers(init?.headers).forEach((value, name) => headers.set(name, value));
 
       const legacyActor = headers.get("x-actor-email");
       headers.delete("x-actor-email");
-      if (activeToken && !publicAuth) {
+      if (activeToken && !publicRequest) {
         headers.set("authorization", `Bearer ${activeToken}`);
       }
       if (legacyActor
@@ -112,7 +113,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
 
       const response = await originalFetch(input, { ...init, headers });
-      if (response.status === 401 && !publicAuth) {
+      if (response.status === 401 && !publicRequest) {
         clearSession();
         setToken(null);
         setIdentity(null);
