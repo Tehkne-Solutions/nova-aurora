@@ -2,7 +2,13 @@ import { timingSafeEqual } from "node:crypto";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { Worker } from "bullmq";
 import { Redis } from "ioredis";
-import { closeDb, db, MarketProductionService, PrivacyComplianceService } from "@nova-aurora/database";
+import {
+  closeDb,
+  db,
+  MarketProductionService,
+  PrivacyComplianceService,
+  TransactionalEmailService
+} from "@nova-aurora/database";
 
 function connectionOptions(): {
   host: string;
@@ -66,6 +72,7 @@ async function within<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
 
 const economy = new MarketProductionService();
 const privacy = new PrivacyComplianceService();
+const transactionalEmail = new TransactionalEmailService();
 const redisUrl = process.env.REDIS_URL ?? "redis://localhost:6379";
 const publisher = new Redis(redisUrl, { maxRetriesPerRequest: null });
 const sweepSeconds = Number(process.env.ECONOMY_TICK_SECONDS ?? 30);
@@ -78,6 +85,9 @@ const metrics = {
   completedJobs: 0,
   failedJobs: 0,
   processedDeletions: 0,
+  emailsSent: 0,
+  emailsFailed: 0,
+  emailsDead: 0,
   lastTickTimestamp: 0,
   postgresReady: false,
   redisReady: false
@@ -135,15 +145,20 @@ async function tick(): Promise<void> {
   const completedProduction = await sweepDueProduction();
   const publishedEvents = await publishOutbox();
   const processedDeletions = await privacy.processDueDeletions(25);
+  const emailDelivery = await transactionalEmail.processDue(50);
   metrics.ticks += 1;
   metrics.completedProduction += completedProduction;
   metrics.publishedEvents += publishedEvents;
   metrics.processedDeletions += processedDeletions;
+  metrics.emailsSent += emailDelivery.sent;
+  metrics.emailsFailed += emailDelivery.failed;
+  metrics.emailsDead += emailDelivery.dead;
   metrics.lastTickTimestamp = Date.now();
   log("info", "world.tick.completed", {
     completedProduction,
     publishedEvents,
     processedDeletions,
+    emailDelivery,
     durationMs: Date.now() - started
   });
 }
@@ -191,6 +206,11 @@ function renderMetrics(): string {
     "# HELP nova_aurora_worker_privacy_deletions_total Privacy deletions processed.",
     "# TYPE nova_aurora_worker_privacy_deletions_total counter",
     `nova_aurora_worker_privacy_deletions_total ${metrics.processedDeletions}`,
+    "# HELP nova_aurora_worker_transactional_email_total Transactional email delivery results.",
+    "# TYPE nova_aurora_worker_transactional_email_total counter",
+    `nova_aurora_worker_transactional_email_total{result="sent"} ${metrics.emailsSent}`,
+    `nova_aurora_worker_transactional_email_total{result="failed"} ${metrics.emailsFailed}`,
+    `nova_aurora_worker_transactional_email_total{result="dead"} ${metrics.emailsDead}`,
     "# HELP nova_aurora_worker_last_tick_timestamp_seconds Last successful tick timestamp.",
     "# TYPE nova_aurora_worker_last_tick_timestamp_seconds gauge",
     `nova_aurora_worker_last_tick_timestamp_seconds ${metrics.lastTickTimestamp / 1000}`,
