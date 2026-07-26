@@ -29,6 +29,8 @@ jobs:
       DATABASE_URL: postgresql://nova_aurora:nova_aurora@localhost:5432/nova_aurora
       REDIS_URL: redis://localhost:6379
       INTERNAL_API_TOKEN: 123456789012345678901234
+      DATA_ENCRYPTION_KEY: ci-data-encryption-key-12345678901234567890
+      ALLOW_RECOVERY_TOKEN_RESPONSE: "true"
     steps:
       - uses: actions/checkout@v6
 
@@ -93,7 +95,7 @@ jobs:
       - name: Validate production Compose
         run: |
           mkdir -p infra/secrets
-          for secret in postgres_password redis_password internal_api_token bootstrap_admin_password bootstrap_bob_password grafana_admin_password; do
+          for secret in postgres_password redis_password internal_api_token data_encryption_key bootstrap_admin_password bootstrap_bob_password grafana_admin_password; do
             printf 'ci-%s-123456789012345678901234567890\n' "$secret" > "infra/secrets/$secret.txt"
           done
           docker compose --env-file .env.production.example -f infra/docker-compose.prod.yml config > compose.resolved.yml
