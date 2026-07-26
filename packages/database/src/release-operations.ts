@@ -1,5 +1,7 @@
 import { BetaOperationsService } from "./beta-operations.js";
 import type { ControlledBetaReadiness } from "./controlled-beta-rules.js";
+import { BetaTelemetryService } from "./beta-telemetry.js";
+import type { BetaCommunityReadiness } from "./beta-telemetry-rules.js";
 import { LaunchAssuranceService } from "./launch-assurance.js";
 import type { LaunchOperationsReadiness } from "./launch-assurance-rules.js";
 import type { ModerationReadiness } from "./moderation-operations-rules.js";
@@ -18,26 +20,14 @@ export type ReleaseReadinessSummary = Readonly<{
     waveActive: number;
     wavePending: number;
   }>;
-  email: Readonly<{
-    queued: number;
-    failed: number;
-    dead: number;
-    sent: number;
-  }>;
-  integrity: Readonly<{
-    openFraudEvents: number;
-    restrictedUsers: number;
-  }>;
-  gates: Readonly<{
-    passing: number;
-    pending: number;
-    blocked: number;
-    waived: number;
-  }>;
+  email: Readonly<{ queued: number; failed: number; dead: number; sent: number }>;
+  integrity: Readonly<{ openFraudEvents: number; restrictedUsers: number }>;
+  gates: Readonly<{ passing: number; pending: number; blocked: number; waived: number }>;
   trust: TrustReadiness;
   operations: LaunchOperationsReadiness;
   moderation: ModerationReadiness;
   controlledBeta: ControlledBetaReadiness;
+  community: BetaCommunityReadiness;
 }>;
 
 function registrationMode(): "open" | "invite-only" | "closed" {
@@ -51,13 +41,13 @@ function registrationMode(): "open" | "invite-only" | "closed" {
 export class ReleaseOperationsService extends ReleaseCandidateService {
   private readonly assurance = new LaunchAssuranceService();
   private readonly beta = new BetaOperationsService();
+  private readonly telemetry = new BetaTelemetryService();
 
   async summary(): Promise<ReleaseReadinessSummary> {
-    const [users, emails, integrity, gates, trust, operations, moderation, controlledBeta] =
+    const [users,emails,integrity,gates,trust,operations,moderation,controlledBeta,community] =
       await Promise.all([
         this.sql`
-          SELECT
-            count(*)::int total,
+          SELECT count(*)::int total,
             count(*) FILTER (
               WHERE public_beta_access='active' AND status='active'
             )::int active_beta,
@@ -72,8 +62,7 @@ export class ReleaseOperationsService extends ReleaseCandidateService {
           FROM users
         `,
         this.sql`
-          SELECT
-            count(*) FILTER (WHERE status='queued')::int queued,
+          SELECT count(*) FILTER (WHERE status='queued')::int queued,
             count(*) FILTER (WHERE status='failed')::int failed,
             count(*) FILTER (WHERE status='dead')::int dead,
             count(*) FILTER (WHERE status='sent')::int sent
@@ -86,8 +75,7 @@ export class ReleaseOperationsService extends ReleaseCandidateService {
               WHERE economic_status IN ('restricted','frozen')) restricted_users
         `,
         this.sql`
-          SELECT
-            count(*) FILTER (WHERE status='passing')::int passing,
+          SELECT count(*) FILTER (WHERE status='passing')::int passing,
             count(*) FILTER (WHERE status='pending')::int pending,
             count(*) FILTER (WHERE status='blocked')::int blocked,
             count(*) FILTER (WHERE status='waived')::int waived
@@ -96,7 +84,8 @@ export class ReleaseOperationsService extends ReleaseCandidateService {
         this.assurance.readiness(),
         this.assurance.operationsReadiness(),
         this.beta.moderationReadiness(),
-        this.beta.controlledBetaReadiness()
+        this.beta.controlledBetaReadiness(),
+        this.telemetry.communityReadiness()
       ]);
     const user = users[0] ?? {};
     const email = emails[0] ?? {};
@@ -121,7 +110,8 @@ export class ReleaseOperationsService extends ReleaseCandidateService {
         && trust.launchReady
         && operations.launchReady
         && moderation.ready
-        && controlledBeta.ready,
+        && controlledBeta.ready
+        && community.ready,
       users: {
         total: Number(user.total ?? 0),
         activeBeta: Number(user.active_beta ?? 0),
@@ -149,7 +139,8 @@ export class ReleaseOperationsService extends ReleaseCandidateService {
       trust,
       operations,
       moderation,
-      controlledBeta
+      controlledBeta,
+      community
     };
   }
 }
