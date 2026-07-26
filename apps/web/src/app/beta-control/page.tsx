@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
 import styles from "../launch-ops.module.css";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
@@ -18,6 +18,7 @@ type BetaState = Readonly<{
   waves: readonly Readonly<{
     id: string; waveKey: string; label: string; status: string;
     targetPercent: number; maxActivations: number; members: number; activeMembers: number;
+    approvedBy: string | null; approvedAt: string | null;
   }>[];
   observations: readonly Readonly<{
     id: string; waveId: string | null; errorRatePercent: number;
@@ -45,16 +46,21 @@ export default function BetaControlPage() {
       const payload = await response.json() as BetaState & { message?: string };
       if (!response.ok) throw new Error(payload.message ?? "Controle de beta indisponível.");
       setState(payload);
-      if (!selectedWave && payload.waves[0]) setSelectedWave(payload.waves[0].id);
+      setSelectedWave((current) => current || payload.control.activeWaveId || payload.waves[0]?.id || "");
       setMessage(payload.readiness.ready
-        ? "Existe uma onda preparada e o kill switch está disponível."
+        ? "Existe uma onda aprovada e o kill switch está disponível."
         : "A ativação controlada possui bloqueadores.");
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Falha ao carregar controle.");
     }
-  }, [selectedWave]);
+  }, []);
 
   useEffect(() => { void load(); }, [load]);
+
+  const activeWave = useMemo(
+    () => state?.waves.find((wave) => wave.id === state.control.activeWaveId) ?? null,
+    [state]
+  );
 
   async function post(path: string, body: unknown, idempotent = false) {
     setBusy(true);
@@ -94,8 +100,12 @@ export default function BetaControlPage() {
 
   async function observe(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (!state?.control.activeWaveId) {
+      setMessage("Não existe onda ativa para receber observações automáticas.");
+      return;
+    }
     await post("/v1/beta-control/observations", {
-      ...(selectedWave ? { waveId: selectedWave } : {}),
+      waveId: state.control.activeWaveId,
       errorRatePercent: Number(errorRate),
       p95LatencyMs: Number(latency),
       criticalReports: Number(criticalReports),
@@ -110,7 +120,7 @@ export default function BetaControlPage() {
         <div>
           <p className={styles.eyebrow}>NOVA AURORA · BETA CONTROLADO 0.17</p>
           <h1>Ativar em ondas, observar e recuar.</h1>
-          <p>Gates, moderação, componentes e limites de saúde são verificados antes e durante cada onda.</p>
+          <p>Gates, aprovação independente, cobertura contínua e limites de saúde são verificados antes e durante cada onda.</p>
         </div>
         <nav>
           <Link href="/moderation" className={styles.link}>Moderação</Link>
@@ -125,7 +135,7 @@ export default function BetaControlPage() {
         <article className={styles.metric}><span>Modo</span><strong>{state?.control.mode ?? "—"}</strong></article>
         <article className={styles.metric}><span>Estado</span><strong>{state?.control.status ?? "—"}</strong></article>
         <article className={styles.metric}><span>Kill switch</span><strong>{state?.control.killSwitch ? "ATIVO" : "PRONTO"}</strong></article>
-        <article className={styles.metric}><span>Ondas ativas</span><strong>{state?.readiness.activeWaves ?? 0}</strong></article>
+        <article className={styles.metric}><span>Onda ativa</span><strong>{activeWave?.waveKey ?? "Nenhuma"}</strong></article>
       </section>
 
       <section className={styles.grid}>
@@ -160,19 +170,18 @@ export default function BetaControlPage() {
 
       <section className={styles.section}>
         <p className={styles.eyebrow}>ONDAS</p>
-        <h2>Progressão e reversão</h2>
+        <h2>Progressão, aprovação e reversão</h2>
         <div className={styles.list}>{state?.waves.length ? state.waves.map((wave) => (
           <div className={styles.item} key={wave.id}>
             <div>
               <strong>{wave.waveKey} · {wave.label}</strong>
               <span>{wave.targetPercent}% · limite {wave.maxActivations} · membros {wave.members} · ativos {wave.activeMembers}</span>
+              <span>{wave.approvedAt ? `Aprovada por ${wave.approvedBy}` : "Aprovação independente pendente"}</span>
             </div>
             <div className={styles.actions}>
               <span className={styles.tag}>{wave.status}</span>
-              <button className={styles.button} type="button" disabled={busy} onClick={() => {
-                setSelectedWave(wave.id);
-                void post(`/v1/beta-control/waves/${wave.id}/start`, { reason: "Início aprovado pelo painel operacional." });
-              }}>Iniciar</button>
+              <button className={styles.button} type="button" disabled={busy || Boolean(wave.approvedAt)} onClick={() => void post(`/v1/beta-control/waves/${wave.id}/approve`, { reason: "Onda revisada e aprovada por administrador independente." })}>Aprovar</button>
+              <button className={styles.button} type="button" disabled={busy || !wave.approvedAt} onClick={() => void post(`/v1/beta-control/waves/${wave.id}/start`, { reason: "Início aprovado pelo painel operacional." })}>Iniciar</button>
               <button className={styles.button} type="button" disabled={busy} onClick={() => void post(`/v1/beta-control/waves/${wave.id}/pause`, { reason: "Pausa operacional preventiva." })}>Pausar</button>
               <button className={styles.button} type="button" disabled={busy} onClick={() => void post(`/v1/beta-control/waves/${wave.id}/rollback`, { reason: "Rollback manual da onda." })}>Rollback</button>
               <button className={styles.button} type="button" disabled={busy} onClick={() => void post(`/v1/beta-control/waves/${wave.id}/complete`, { reason: "Critérios da onda concluídos." })}>Concluir</button>
@@ -184,7 +193,7 @@ export default function BetaControlPage() {
       <section className={styles.grid}>
         <article className={styles.section}>
           <p className={styles.eyebrow}>MEMBROS</p>
-          <h2>Inscrição explícita</h2>
+          <h2>Inscrição explícita e elegível</h2>
           <form className={styles.form} onSubmit={enroll}>
             <label>Onda<select className={styles.select} value={selectedWave} onChange={(event) => setSelectedWave(event.target.value)}>
               <option value="">Selecione</option>
@@ -196,14 +205,14 @@ export default function BetaControlPage() {
         </article>
 
         <article className={styles.section}>
-          <p className={styles.eyebrow}>OBSERVAÇÃO</p>
+          <p className={styles.eyebrow}>OBSERVAÇÃO DA ONDA ATIVA</p>
           <h2>Aplicar limites automáticos</h2>
           <form className={styles.form} onSubmit={observe}>
             <label>Taxa de erro (%)<input className={styles.input} type="number" step="0.01" min="0" value={errorRate} onChange={(event) => setErrorRate(event.target.value)} required/></label>
             <label>Latência p95 (ms)<input className={styles.input} type="number" min="0" value={latency} onChange={(event) => setLatency(event.target.value)} required/></label>
             <label>Denúncias críticas<input className={styles.input} type="number" min="0" value={criticalReports} onChange={(event) => setCriticalReports(event.target.value)} required/></label>
             <label>Usuários ativos<input className={styles.input} type="number" min="0" value={activeUsers} onChange={(event) => setActiveUsers(event.target.value)} required/></label>
-            <button className={styles.button} type="submit" disabled={busy}>Registrar observação</button>
+            <button className={styles.button} type="submit" disabled={busy || !state?.control.activeWaveId}>Registrar observação</button>
           </form>
         </article>
       </section>
