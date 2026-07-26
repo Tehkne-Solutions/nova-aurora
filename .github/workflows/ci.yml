@@ -31,6 +31,10 @@ jobs:
       INTERNAL_API_TOKEN: 123456789012345678901234
       DATA_ENCRYPTION_KEY: ci-data-encryption-key-12345678901234567890
       ALLOW_RECOVERY_TOKEN_RESPONSE: "true"
+      PUBLIC_WEB_URL: http://localhost:3000
+      PUBLIC_REGISTRATION_MODE: open
+      TRANSACTIONAL_EMAIL_FROM: Nova Aurora CI <no-reply@nova-aurora.local>
+      TRANSACTIONAL_EMAIL_TOKEN: ci-transactional-email-token-1234567890
     steps:
       - uses: actions/checkout@v6
 
@@ -95,7 +99,7 @@ jobs:
       - name: Validate production Compose
         run: |
           mkdir -p infra/secrets
-          for secret in postgres_password redis_password internal_api_token data_encryption_key bootstrap_admin_password bootstrap_bob_password grafana_admin_password; do
+          for secret in postgres_password redis_password internal_api_token data_encryption_key transactional_email_token bootstrap_admin_password bootstrap_bob_password grafana_admin_password; do
             printf 'ci-%s-123456789012345678901234567890\n' "$secret" > "infra/secrets/$secret.txt"
           done
           docker compose --env-file .env.production.example -f infra/docker-compose.prod.yml config > compose.resolved.yml
