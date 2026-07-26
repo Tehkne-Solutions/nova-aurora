@@ -25,7 +25,10 @@ function isPublicIdentityPath(path: string): boolean {
     || path === "/v1/auth/refresh"
     || path === "/v1/auth/logout"
     || path === "/v1/realtime"
-    || path === "/v1/trust/public";
+    || path === "/v1/trust/public"
+    || path === "/v1/trust/reports"
+    || path === "/v1/trust/guardian/decision"
+    || path === "/v1/status/public";
 }
 
 export async function registerSecurity(app: FastifyInstance): Promise<void> {
@@ -36,12 +39,14 @@ export async function registerSecurity(app: FastifyInstance): Promise<void> {
     const authorization = request.headers.authorization ?? "anonymous";
     const scopeKey = hash(`${request.ip}:${authorization.slice(0, 96)}`);
     try {
+      const sensitivePublic = path === "/v1/trust/reports"
+        || path === "/v1/trust/guardian/decision";
       await authSecurity.consumeRateLimit({
         scopeKey,
         action: `api:${request.method}:${path}`,
-        limit: path === "/v1/auth/register" ? 4 : 180,
+        limit: path === "/v1/auth/register" ? 4 : sensitivePublic ? 12 : 180,
         windowSeconds: 60,
-        blockSeconds: path === "/v1/auth/register" ? 900 : 60
+        blockSeconds: path === "/v1/auth/register" ? 900 : sensitivePublic ? 300 : 60
       });
     } catch {
       throw app.httpErrors.tooManyRequests(
