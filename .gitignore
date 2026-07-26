@@ -5,5 +5,11 @@ coverage
 .turbo
 .env
 .env.local
+.env.production
 *.log
+*.dump
+*.dump.sha256
+infra/secrets/*
+!infra/secrets/README.md
+infra/backups/
 .DS_Store
