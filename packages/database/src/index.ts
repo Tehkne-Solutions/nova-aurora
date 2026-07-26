@@ -38,6 +38,10 @@ export {
 } from "./release-candidate.js";
 export { RegistrationReleaseService } from "./release-registration.js";
 export {
+  ReleaseOperationsService,
+  type ReleaseReadinessSummary
+} from "./release-operations.js";
+export {
   TransactionalEmailService,
   enqueueTransactionalEmail,
   type TransactionalEmailTemplate,
