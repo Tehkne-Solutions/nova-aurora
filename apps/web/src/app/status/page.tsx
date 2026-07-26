@@ -29,9 +29,13 @@ type StatusState = Readonly<{
 }>;
 
 function stateClass(status: string): string {
-  if (status === "operational" || status === "resolved" || status === "postmortem") return styles.good;
-  if (status === "major-outage" || status === "critical") return styles.bad;
-  return styles.warn;
+  if (status === "operational" || status === "resolved" || status === "postmortem") {
+    return styles.good ?? "";
+  }
+  if (status === "major-outage" || status === "critical") {
+    return styles.bad ?? "";
+  }
+  return styles.warn ?? "";
 }
 
 export default function PublicStatusPage() {
