@@ -170,7 +170,7 @@ export class TransactionalEmailService extends EconomyRepositoryBase {
           UPDATE transactional_email_outbox SET
             status=${isDead ? "dead" : "failed"},attempts=${attempts},
             last_error=${message.slice(0,1000)},
-            next_attempt_at=now()+(${retrySeconds(attempts)} || ' seconds')::interval,
+            next_attempt_at=now()+make_interval(secs=>${retrySeconds(attempts)}),
             updated_at=now()
           WHERE id=${id}::uuid
         `;
