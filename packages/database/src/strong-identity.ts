@@ -307,7 +307,7 @@ export class StrongIdentityService extends LiveSecurityService {
         WHERE id=${String(row.challenge_id)}::uuid
       `;
       const roles = await this.strongIdentityRolesFor(tx, userId);
-      const session = await this.createSession(tx, {
+      const session = await this.strongIdentityCreateSession(tx, {
         userId,
         email: String(row.email),
         displayName: String(row.display_name),
@@ -434,7 +434,7 @@ export class StrongIdentityService extends LiveSecurityService {
     });
   }
 
-  private async createSession(tx: Tx, input: {
+  private async strongIdentityCreateSession(tx: Tx, input: {
     userId: string;
     email: string;
     displayName: string;
