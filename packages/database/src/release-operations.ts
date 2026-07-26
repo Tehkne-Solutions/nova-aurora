@@ -1,4 +1,8 @@
 import { ReleaseCandidateService } from "./release-candidate.js";
+import {
+  TrustReadinessService,
+  type TrustReadiness
+} from "./trust-readiness.js";
 
 export type ReleaseReadinessSummary = Readonly<{
   registrationMode: "open" | "invite-only" | "closed";
@@ -26,6 +30,7 @@ export type ReleaseReadinessSummary = Readonly<{
     blocked: number;
     waived: number;
   }>;
+  trust: TrustReadiness;
 }>;
 
 function registrationMode(): "open" | "invite-only" | "closed" {
@@ -37,8 +42,10 @@ function registrationMode(): "open" | "invite-only" | "closed" {
 }
 
 export class ReleaseOperationsService extends ReleaseCandidateService {
+  private readonly trustReadiness = new TrustReadinessService();
+
   async summary(): Promise<ReleaseReadinessSummary> {
-    const [users, emails, integrity, gates] = await Promise.all([
+    const [users, emails, integrity, gates, trust] = await Promise.all([
       this.sql`
         SELECT
           count(*)::int total,
@@ -67,7 +74,8 @@ export class ReleaseOperationsService extends ReleaseCandidateService {
           count(*) FILTER (WHERE status='blocked')::int blocked,
           count(*) FILTER (WHERE status='waived')::int waived
         FROM release_gate_checks
-      `
+      `,
+      this.trustReadiness.readiness()
     ]);
     const user = users[0] ?? {};
     const email = emails[0] ?? {};
@@ -84,7 +92,12 @@ export class ReleaseOperationsService extends ReleaseCandidateService {
     return {
       registrationMode: registrationMode(),
       transactionalProviderConfigured: providerConfigured,
-      launchReady: providerConfigured && pending === 0 && blocked === 0 && dead === 0 && openFraudEvents === 0,
+      launchReady: providerConfigured
+        && pending === 0
+        && blocked === 0
+        && dead === 0
+        && openFraudEvents === 0
+        && trust.launchReady,
       users: {
         total: Number(user.total ?? 0),
         activeBeta: Number(user.active_beta ?? 0),
@@ -106,7 +119,8 @@ export class ReleaseOperationsService extends ReleaseCandidateService {
         pending,
         blocked,
         waived: Number(gate.waived ?? 0)
-      }
+      },
+      trust
     };
   }
 }
