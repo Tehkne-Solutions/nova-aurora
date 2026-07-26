@@ -21,27 +21,48 @@ export class BetaOperationsService extends ControlledBetaService {
   private readonly moderationOperations = new ModerationOperationsService();
   private readonly reports = new ModerationService();
 
+  preparePlayerAccess(userId: string) {
+    return this.moderationOperations.preparePlayerAccess(userId);
+  }
+
   assignReport(input: Parameters<ModerationOperationsService["assignReport"]>[0]) {
     return this.moderationOperations.assignReport(input);
   }
-  acknowledgeReport(input: Parameters<ModerationOperationsService["acknowledgeReport"]>[0]) {
+
+  acknowledgeReport(
+    input: Parameters<ModerationOperationsService["acknowledgeReport"]>[0]
+  ) {
     return this.moderationOperations.acknowledgeReport(input);
   }
-  applyModerationAction(input: Parameters<ModerationOperationsService["applyAction"]>[0]) {
+
+  applyModerationAction(
+    input: Parameters<ModerationOperationsService["applyAction"]>[0]
+  ) {
     return this.moderationOperations.applyAction(input);
   }
-  submitAppeal(input: Parameters<ModerationOperationsService["submitAppeal"]>[0]) {
+
+  submitAppeal(
+    input: Parameters<ModerationOperationsService["submitAppeal"]>[0]
+  ) {
     return this.moderationOperations.submitAppeal(input);
   }
-  reviewAppeal(input: Parameters<ModerationOperationsService["reviewAppeal"]>[0]) {
+
+  reviewAppeal(
+    input: Parameters<ModerationOperationsService["reviewAppeal"]>[0]
+  ) {
     return this.moderationOperations.reviewAppeal(input);
   }
-  scheduleModerationShift(input: Parameters<ModerationOperationsService["scheduleShift"]>[0]) {
+
+  scheduleModerationShift(
+    input: Parameters<ModerationOperationsService["scheduleShift"]>[0]
+  ) {
     return this.moderationOperations.scheduleShift(input);
   }
+
   moderationReadiness() {
     return this.moderationOperations.readiness();
   }
+
   controlledBetaReadiness() {
     return this.readiness();
   }
