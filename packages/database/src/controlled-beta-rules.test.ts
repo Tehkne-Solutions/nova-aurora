@@ -57,3 +57,15 @@ test("controlled beta readiness requires a wave", () => {
   });
   assert.equal(result.ready, false);
 });
+
+test("closed rollout mode is never reported ready", () => {
+  const result = evaluateControlledBetaReadiness({
+    mode: "closed",
+    status: "paused",
+    killSwitch: false,
+    plannedWaves: 1,
+    activeWaves: 0
+  });
+  assert.equal(result.ready, false);
+  assert.match(result.blockers.join(" "), /fechado/i);
+});
