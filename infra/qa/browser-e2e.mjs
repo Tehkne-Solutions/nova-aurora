@@ -134,9 +134,13 @@ const report = { pages: [], login: null, exceptions };
 await command("Page.enable");
 await command("Runtime.enable");
 
-for (const path of ["/login", "/verify-email", "/recover-account"]) {
+for (const path of ["/login", "/verify-email", "/recover-account", "/trust"]) {
   await navigate(path);
-  report.pages.push(await evaluate(auditExpression()));
+  const audit = await evaluate(auditExpression());
+  report.pages.push(audit);
+  if (audit.path !== path) {
+    throw new Error(`A rota pública ${path} redirecionou para ${audit.path}.`);
+  }
 }
 
 await navigate("/login");
@@ -163,7 +167,7 @@ await retry(async () => {
 }, 20_000);
 report.login = { path: await evaluate("location.pathname"), authenticated: true };
 
-for (const path of ["/account", "/release"]) {
+for (const path of ["/account", "/release", "/trust"]) {
   await navigate(path);
   const audit = await evaluate(auditExpression());
   report.pages.push(audit);
@@ -173,14 +177,27 @@ for (const path of ["/account", "/release"]) {
   }
 }
 
+// Aguarda efeitos, chamadas assíncronas e exceções tardias antes de congelar a evidência.
+await new Promise((resolve) => setTimeout(resolve, 1_000));
 const issues = report.pages.flatMap((page) => page.issues.map((issue) => `${page.path}: ${issue}`));
-await writeFile(reportFile, JSON.stringify({ ...report, issues }, null, 2));
+const finalReport = { ...report, exceptions: [...exceptions], issues };
+await writeFile(reportFile, JSON.stringify(finalReport, null, 2));
 if (issues.length > 0) throw new Error(`Falhas de acessibilidade: ${issues.join("; ")}`);
 if (exceptions.length > 0) throw new Error(`Exceções no navegador: ${exceptions.join("; ")}`);
 
 socket.close();
 child.kill("SIGTERM");
-await rm(profile, { recursive: true, force: true });
+await Promise.race([
+  new Promise((resolve) => child.once("exit", resolve)),
+  new Promise((resolve) => setTimeout(resolve, 3_000))
+]);
+if (child.exitCode === null) {
+  child.kill("SIGKILL");
+  await new Promise((resolve) => child.once("exit", resolve));
+}
+await retry(async () => {
+  await rm(profile, { recursive: true, force: true });
+}, 5_000);
 console.log(JSON.stringify({ status: "passed", pages: report.pages.length, signature: "Tehkné Solutions" }));
 
 process.on("exit", () => {

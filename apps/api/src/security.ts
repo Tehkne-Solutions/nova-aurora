@@ -24,7 +24,8 @@ function isPublicIdentityPath(path: string): boolean {
     || path === "/v1/auth/register"
     || path === "/v1/auth/refresh"
     || path === "/v1/auth/logout"
-    || path === "/v1/realtime";
+    || path === "/v1/realtime"
+    || path === "/v1/trust/public";
 }
 
 export async function registerSecurity(app: FastifyInstance): Promise<void> {
