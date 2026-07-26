@@ -1,8 +1,10 @@
 name: CI
+
 on:
   pull_request:
   push:
     branches: [main]
+
 jobs:
   validate:
     runs-on: ubuntu-latest
@@ -26,46 +28,138 @@ jobs:
     env:
       DATABASE_URL: postgresql://nova_aurora:nova_aurora@localhost:5432/nova_aurora
       REDIS_URL: redis://localhost:6379
-      AUTH_SECRET: 12345678901234567890123456789012
       INTERNAL_API_TOKEN: 123456789012345678901234
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
+
       - uses: pnpm/action-setup@v4
         with: { version: 10.13.1 }
+
       - uses: actions/setup-node@v4
-        with: { node-version: 22 }
+        with: { node-version: 22, cache: pnpm }
+
       - run: pnpm install --no-frozen-lockfile
       - run: pnpm db:migrate
+
       - name: Typecheck
         shell: bash
         run: |
           set -o pipefail
           pnpm typecheck 2>&1 | tee typecheck.log
+
       - name: Upload typecheck diagnostics
         if: failure()
         uses: actions/upload-artifact@v4
         with:
           name: typecheck-diagnostics
           path: typecheck.log
+
       - name: Test
         shell: bash
         run: |
           set -o pipefail
           pnpm test 2>&1 | tee test.log
+
       - name: Upload test diagnostics
         if: failure()
         uses: actions/upload-artifact@v4
         with:
           name: test-diagnostics
           path: test.log
-      - name: Build
+
+      - name: Build application
         shell: bash
         run: |
           set -o pipefail
           pnpm build 2>&1 | tee build.log
+
       - name: Upload build diagnostics
         if: failure()
         uses: actions/upload-artifact@v4
         with:
           name: build-diagnostics
           path: build.log
+
+      - name: Validate scripts and dashboards
+        run: |
+          node --check infra/docker/runtime-secrets.mjs
+          node --check infra/docker/run-service.mjs
+          node --check infra/docker/migrate-and-secure.mjs
+          sh -n infra/backup/backup.sh
+          sh -n infra/backup/restore.sh
+          sh -n infra/backup/verify.sh
+          node -e "JSON.parse(require('node:fs').readFileSync('infra/grafana/dashboards/nova-aurora-operations.json','utf8'))"
+
+      - name: Validate production Compose
+        run: |
+          mkdir -p infra/secrets
+          for secret in postgres_password redis_password internal_api_token bootstrap_admin_password bootstrap_bob_password grafana_admin_password; do
+            printf 'ci-%s-123456789012345678901234567890\n' "$secret" > "infra/secrets/$secret.txt"
+          done
+          docker compose --env-file .env.production.example -f infra/docker-compose.prod.yml config > compose.resolved.yml
+
+      - name: Validate Caddy configuration
+        run: |
+          docker run --rm \
+            -e DOMAIN=nova-aurora.example.com \
+            -e ACME_EMAIL=infra@example.com \
+            -v "$PWD/infra/caddy/Caddyfile:/etc/caddy/Caddyfile:ro" \
+            caddy:2.11.3-alpine \
+            caddy validate --config /etc/caddy/Caddyfile
+
+      - name: Validate Prometheus configuration
+        run: |
+          docker run --rm \
+            --entrypoint /bin/promtool \
+            -v "$PWD/infra/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro" \
+            -v "$PWD/infra/prometheus/alerts.yml:/etc/prometheus/alerts.yml:ro" \
+            -v "$PWD/infra/secrets/internal_api_token.txt:/run/secrets/internal_api_token:ro" \
+            prom/prometheus:v3.11.3 \
+            check config /etc/prometheus/prometheus.yml
+
+      - name: Build production images
+        run: |
+          docker build -f Dockerfile.api -t nova-aurora-api:ci .
+          docker build -f Dockerfile.worker -t nova-aurora-worker:ci .
+          docker build \
+            --build-arg NEXT_PUBLIC_API_URL=https://api.nova-aurora.example.com \
+            -f Dockerfile.web -t nova-aurora-web:ci .
+
+      - name: Create and verify database backup
+        run: |
+          mkdir -p "$RUNNER_TEMP/nova-aurora-backups" "$RUNNER_TEMP/nova-aurora-secrets"
+          printf 'nova_aurora\n' > "$RUNNER_TEMP/nova-aurora-secrets/postgres_password"
+          docker run --rm --network host \
+            -e POSTGRES_HOST=127.0.0.1 \
+            -e POSTGRES_PORT=5432 \
+            -e POSTGRES_DB=nova_aurora \
+            -e POSTGRES_USER=nova_aurora \
+            -e POSTGRES_PASSWORD_FILE=/run/secrets/postgres_password \
+            -e BACKUP_DIR=/backups \
+            -e BACKUP_ONCE=true \
+            -v "$PWD/infra/backup:/opt/nova-aurora:ro" \
+            -v "$RUNNER_TEMP/nova-aurora-backups:/backups" \
+            -v "$RUNNER_TEMP/nova-aurora-secrets/postgres_password:/run/secrets/postgres_password:ro" \
+            postgres:17-alpine /bin/sh /opt/nova-aurora/backup.sh
+          backup_file="$(find "$RUNNER_TEMP/nova-aurora-backups" -name '*.dump' -type f | head -n 1)"
+          test -n "$backup_file"
+          docker run --rm --network host \
+            -e POSTGRES_HOST=127.0.0.1 \
+            -e POSTGRES_PORT=5432 \
+            -e POSTGRES_USER=nova_aurora \
+            -e POSTGRES_PASSWORD_FILE=/run/secrets/postgres_password \
+            -v "$PWD/infra/backup:/opt/nova-aurora:ro" \
+            -v "$RUNNER_TEMP/nova-aurora-backups:/backups" \
+            -v "$RUNNER_TEMP/nova-aurora-secrets/postgres_password:/run/secrets/postgres_password:ro" \
+            postgres:17-alpine /bin/sh /opt/nova-aurora/verify.sh "/backups/$(basename "$backup_file")"
+
+      - name: Upload infrastructure diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: infrastructure-diagnostics
+          path: |
+            compose.resolved.yml
+            typecheck.log
+            test.log
+            build.log
