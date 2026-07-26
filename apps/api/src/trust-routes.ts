@@ -1,13 +1,13 @@
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { z } from "zod";
-import { TrustReadinessService } from "@nova-aurora/database";
+import { LaunchAssuranceService } from "@nova-aurora/database";
 import {
   requireIdentity,
   requireRole,
   requestUserAgent
 } from "./auth-context.js";
 
-const trust = new TrustReadinessService();
+const trust = new LaunchAssuranceService();
 
 function idempotencyKey(app: FastifyInstance, request: FastifyRequest): string {
   const value = request.headers["idempotency-key"];
