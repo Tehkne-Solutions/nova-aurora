@@ -306,7 +306,7 @@ export class StrongIdentityService extends LiveSecurityService {
         UPDATE mfa_login_challenges SET consumed_at=now()
         WHERE id=${String(row.challenge_id)}::uuid
       `;
-      const roles = await this.rolesFor(tx, userId);
+      const roles = await this.strongIdentityRolesFor(tx, userId);
       const session = await this.createSession(tx, {
         userId,
         email: String(row.email),
@@ -469,7 +469,7 @@ export class StrongIdentityService extends LiveSecurityService {
     };
   }
 
-  private async rolesFor(tx: Tx, userId: string): Promise<readonly UserRole[]> {
+  private async strongIdentityRolesFor(tx: Tx, userId: string): Promise<readonly UserRole[]> {
     const rows = await tx`
       SELECT role FROM user_roles
       WHERE user_id=${userId}::uuid AND (expires_at IS NULL OR expires_at>now())
