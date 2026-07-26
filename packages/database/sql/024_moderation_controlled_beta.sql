@@ -33,7 +33,8 @@ BEGIN
   IF policy.priority IS NULL THEN
     RAISE EXCEPTION 'Política de SLA ausente para prioridade %',NEW.priority;
   END IF;
-  IF TG_OP='INSERT' OR NEW.priority IS DISTINCT FROM OLD.priority THEN
+
+  IF TG_OP='INSERT' THEN
     NEW.first_response_due_at := COALESCE(
       NEW.first_response_due_at,
       COALESCE(NEW.created_at,now()) + make_interval(mins=>policy.first_response_minutes)
@@ -42,6 +43,12 @@ BEGIN
       NEW.resolution_due_at,
       COALESCE(NEW.created_at,now()) + make_interval(mins=>policy.resolution_minutes)
     );
+  ELSIF NEW.priority IS DISTINCT FROM OLD.priority THEN
+    NEW.first_response_due_at :=
+      COALESCE(NEW.created_at,now()) + make_interval(mins=>policy.first_response_minutes);
+    NEW.resolution_due_at :=
+      COALESCE(NEW.created_at,now()) + make_interval(mins=>policy.resolution_minutes);
+    NEW.escalated_at := NULL;
   END IF;
   RETURN NEW;
 END $$;
@@ -91,6 +98,9 @@ CREATE TABLE IF NOT EXISTS moderation_actions (
     CHECK (status IN ('active','revoked','expired','completed')),
   starts_at timestamptz NOT NULL DEFAULT now(),
   ends_at timestamptz,
+  previous_beta_access text,
+  previous_beta_activation_state text,
+  previous_economic_status text,
   created_by uuid NOT NULL REFERENCES users(id),
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now()
@@ -184,6 +194,8 @@ CREATE TABLE IF NOT EXISTS beta_rollout_waves (
   completed_at timestamptz,
   rollback_reason text,
   created_by uuid NOT NULL REFERENCES users(id),
+  approved_by uuid REFERENCES users(id),
+  approved_at timestamptz,
   updated_by uuid REFERENCES users(id),
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now()
@@ -208,6 +220,8 @@ CREATE TABLE IF NOT EXISTS beta_wave_members (
   user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   status text NOT NULL DEFAULT 'pending'
     CHECK (status IN ('pending','active','paused','revoked','completed')),
+  previous_activation_state text
+    CHECK (previous_activation_state IS NULL OR previous_activation_state IN ('pending','active','paused','revoked')),
   enrolled_by uuid NOT NULL REFERENCES users(id),
   enrolled_at timestamptz NOT NULL DEFAULT now(),
   activated_at timestamptz,
@@ -249,9 +263,9 @@ CREATE TABLE IF NOT EXISTS beta_rollout_events (
 
 INSERT INTO release_gate_checks (gate_key,label,status,evidence,notes) VALUES
   ('moderation-sla-coverage','Cobertura de moderação e SLA','pending','{}'::jsonb,
-    'Exige turno cobrindo as próximas 24 horas e ausência de denúncias críticas vencidas.'),
+    'Exige cobertura contínua das próximas 24 horas e ausência de denúncias críticas vencidas.'),
   ('controlled-beta-wave-prepared','Onda controlada de beta preparada','pending','{}'::jsonb,
-    'Exige onda planejada, limites explícitos e kill switch disponível.')
+    'Exige membros elegíveis, limites explícitos, aprovação independente e kill switch disponível.')
 ON CONFLICT (gate_key) DO NOTHING;
 
 COMMIT;
