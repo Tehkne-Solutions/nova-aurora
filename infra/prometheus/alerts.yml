@@ -1,0 +1,58 @@
+groups:
+  - name: nova-aurora-availability
+    rules:
+      - alert: NovaAuroraTargetDown
+        expr: up{job=~"nova-aurora-api|nova-aurora-worker"} == 0
+        for: 2m
+        labels:
+          severity: critical
+          product: nova-aurora
+        annotations:
+          summary: "Serviço da Nova Aurora indisponível"
+          description: "O target {{ $labels.job }} não responde ao Prometheus há mais de 2 minutos."
+
+      - alert: NovaAuroraDependencyUnavailable
+        expr: nova_aurora_dependency_ready == 0
+        for: 2m
+        labels:
+          severity: critical
+          product: nova-aurora
+        annotations:
+          summary: "Dependência da Nova Aurora indisponível"
+          description: "{{ $labels.service }} não consegue acessar {{ $labels.dependency }}."
+
+      - alert: NovaAuroraWorkerTickStale
+        expr: time() - nova_aurora_worker_last_tick_timestamp_seconds > 180
+        for: 2m
+        labels:
+          severity: critical
+          product: nova-aurora
+        annotations:
+          summary: "Worker econômico sem tick recente"
+          description: "O último tick econômico ocorreu há mais de 3 minutos."
+
+  - name: nova-aurora-quality
+    rules:
+      - alert: NovaAuroraHighServerErrorRate
+        expr: |
+          sum(rate(nova_aurora_http_requests_total{status=~"5.."}[5m]))
+          /
+          clamp_min(sum(rate(nova_aurora_http_requests_total[5m])), 0.000001)
+          > 0.05
+        for: 5m
+        labels:
+          severity: warning
+          product: nova-aurora
+        annotations:
+          summary: "Taxa elevada de erros HTTP 5xx"
+          description: "Mais de 5% das requisições da API falharam com 5xx nos últimos 5 minutos."
+
+      - alert: NovaAuroraWorkerFailures
+        expr: increase(nova_aurora_worker_tick_failures_total[10m]) > 0 or increase(nova_aurora_worker_jobs_total{result="failure"}[10m]) > 0
+        for: 1m
+        labels:
+          severity: warning
+          product: nova-aurora
+        annotations:
+          summary: "Falha recente no worker"
+          description: "O worker registrou falha de tick ou processamento de job nos últimos 10 minutos."
