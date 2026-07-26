@@ -1,11 +1,13 @@
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import {
   StrongIdentityService,
+  TrustReadinessService,
   type AuthenticatedIdentity,
   type UserRole
 } from "@nova-aurora/database";
 
 export const authSecurity = new StrongIdentityService();
+const trustReadiness = new TrustReadinessService();
 
 export function requestUserAgent(request: FastifyRequest): string | undefined {
   const value = request.headers["user-agent"];
@@ -41,21 +43,34 @@ export async function requireActor(
 ): Promise<AuthenticatedIdentity> {
   const identity = await requireIdentity(app, request);
   const context = request.headers["x-actor-context"];
-  if (typeof context !== "string" || context.trim().length === 0) {
-    return identity;
+  let actor = identity;
+
+  if (typeof context === "string" && context.trim().length > 0) {
+    try {
+      actor = await authSecurity.assumeContext({
+        identity,
+        targetEmail: context,
+        ipAddress: request.ip,
+        userAgent: requestUserAgent(request)
+      });
+    } catch (error) {
+      throw app.httpErrors.forbidden(
+        error instanceof Error ? error.message : "Contexto não autorizado."
+      );
+    }
   }
+
   try {
-    return await authSecurity.assumeContext({
-      identity,
-      targetEmail: context,
-      ipAddress: request.ip,
-      userAgent: requestUserAgent(request)
-    });
+    await trustReadiness.assertPlayerReady(actor.userId);
   } catch (error) {
     throw app.httpErrors.forbidden(
-      error instanceof Error ? error.message : "Contexto não autorizado."
+      error instanceof Error
+        ? error.message
+        : "Regularize os requisitos na Central de Confiança."
     );
   }
+
+  return actor;
 }
 
 export async function requireActorId(
