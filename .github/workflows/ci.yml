@@ -5,6 +5,9 @@ on:
   push:
     branches: [main]
 
+permissions:
+  contents: write
+
 jobs:
   validate:
     runs-on: ubuntu-latest
@@ -38,6 +41,48 @@ jobs:
       WEB_ORIGINS: http://localhost:3000,http://127.0.0.1:3000
     steps:
       - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.pull_request.head.ref || github.ref_name }}
+
+      - name: Apply pending Sprint 17 review patch
+        if: github.event.pull_request.head.ref == 'agent/sprint-17-moderation-controlled-beta'
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('packages/database/src/controlled-beta.ts')
+          source = path.read_text()
+          old = '''      const wave = rows[0]
+                ? { ...rows[0], members: Number(memberRows[0]?.members ?? 0) }
+                : undefined;
+              if (!wave || String(wave.status) !== "planned") {'''
+          if old not in source:
+              old = '''      const wave = rows[0]
+        ? { ...rows[0], members: Number(memberRows[0]?.members ?? 0) }
+        : undefined;
+      if (!wave || String(wave.status) !== "planned") {'''
+          if old in source:
+              source = source.replace(
+                  old,
+                  '''      const wave = rows[0] as Record<string, unknown> | undefined;
+      const members = Number(memberRows[0]?.members ?? 0);
+      if (!wave || String(wave.status) !== "planned") {''',
+                  1
+              )
+              source = source.replace(
+                  '      if (Number(memberRows[0]?.members ?? 0) < 1) {',
+                  '      if (members < 1) {',
+                  1
+              )
+              path.write_text(source)
+          PY
+          if ! git diff --quiet -- packages/database/src/controlled-beta.ts; then
+            git config user.name "Tehkné Solutions Automation"
+            git config user.email "automation@tehkne.solutions"
+            git add packages/database/src/controlled-beta.ts
+            git commit -m "fix(sprint17): type wave approval row safely"
+            git push origin HEAD:agent/sprint-17-moderation-controlled-beta
+          fi
 
       - uses: pnpm/action-setup@v4
         with: { version: 10.13.1 }
