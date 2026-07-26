@@ -13,6 +13,8 @@ x-app-environment: &app-environment
   INTERNAL_API_TOKEN_FILE: /run/secrets/internal_api_token
   DATA_ENCRYPTION_KEY_FILE: /run/secrets/data_encryption_key
   ALLOW_RECOVERY_TOKEN_RESPONSE: "false"
+  DATA_ENCRYPTION_KEY_FILE: /run/secrets/data_encryption_key
+  ALLOW_RECOVERY_TOKEN_RESPONSE: "false"
   APP_VERSION: ${APP_VERSION:-development}
   GIT_COMMIT_SHA: ${GIT_COMMIT_SHA:-unknown}
   LOG_LEVEL: ${LOG_LEVEL:-info}
@@ -21,6 +23,7 @@ x-app-secrets: &app-secrets
   - postgres_password
   - redis_password
   - internal_api_token
+  - data_encryption_key
   - data_encryption_key
 
 x-node-runtime: &node-runtime
@@ -250,6 +253,8 @@ secrets:
     file: ${SECRETS_DIR:-./secrets}/redis_password.txt
   internal_api_token:
     file: ${SECRETS_DIR:-./secrets}/internal_api_token.txt
+  data_encryption_key:
+    file: ${SECRETS_DIR:-./secrets}/data_encryption_key.txt
   data_encryption_key:
     file: ${SECRETS_DIR:-./secrets}/data_encryption_key.txt
   bootstrap_admin_password:
