@@ -59,6 +59,10 @@ necessários para:
 - investigar abuso;
 - cumprir retenções obrigatórias.
 
+Na exportação, cada lançamento utiliza o horário da transação contábil pai. Isso
+mantém todos os débitos e créditos de uma mesma operação associados ao mesmo
+instante auditável.
+
 A política pública deve explicar com precisão as finalidades, bases legais,
 prazos de retenção, operadores, subprocessadores, canal do titular e autoridade
 competente antes do beta público.
