@@ -58,17 +58,22 @@ function isProtectedPath(pathname: string): boolean {
     "/dashboard",
     "/account",
     "/integrity",
-    "/release"
+    "/release",
+    "/operations",
+    "/guardian-request"
   ].some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`));
 }
 
-function isPublicApiRequest(requestUrl: string): boolean {
+function isPublicAuthRequest(requestUrl: string): boolean {
   return requestUrl.includes("/v1/auth/login")
     || requestUrl.includes("/v1/auth/register")
     || requestUrl.includes("/v1/auth/mfa/complete")
     || requestUrl.includes("/v1/auth/recovery/")
     || requestUrl.includes("/v1/auth/email-verification/confirm")
-    || requestUrl.includes("/v1/trust/public");
+    || requestUrl.includes("/v1/trust/public")
+    || requestUrl.includes("/v1/trust/reports")
+    || requestUrl.includes("/v1/trust/guardian/decision")
+    || requestUrl.includes("/v1/status/public");
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
@@ -96,13 +101,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       const activeToken = localStorage.getItem(TOKEN_KEY);
       const activeIdentity = storedIdentity();
-      const publicRequest = isPublicApiRequest(requestUrl);
+      const publicAuth = isPublicAuthRequest(requestUrl);
       const headers = new Headers(input instanceof Request ? input.headers : undefined);
       new Headers(init?.headers).forEach((value, name) => headers.set(name, value));
 
       const legacyActor = headers.get("x-actor-email");
       headers.delete("x-actor-email");
-      if (activeToken && !publicRequest) {
+      if (activeToken && !publicAuth) {
         headers.set("authorization", `Bearer ${activeToken}`);
       }
       if (legacyActor
@@ -113,7 +118,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
 
       const response = await originalFetch(input, { ...init, headers });
-      if (response.status === 401 && !publicRequest) {
+      if (response.status === 401 && !publicAuth) {
         clearSession();
         setToken(null);
         setIdentity(null);
@@ -183,6 +188,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
 export function useAuth(): AuthContextValue {
   const value = useContext(AuthContext);
-  if (!value) throw new Error("useAuth precisa estar dentro de AuthProvider.");
+  if (!value) throw new Error("AuthProvider não configurado.");
   return value;
 }
