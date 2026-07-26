@@ -23,6 +23,24 @@ export {
 } from "./auth-security.js";
 export { LiveSecurityService } from "./live-security.js";
 export {
+  StrongIdentityService,
+  type MfaChallengeResult,
+  type MfaSetupResult,
+  type SecureLoginResult
+} from "./strong-identity.js";
+export {
+  PrivacyComplianceService,
+  type ConsentPurpose,
+  type PrivacyState
+} from "./privacy-compliance.js";
+export {
+  EconomyIntegrityService,
+  evaluateMarketOrderIntegrity,
+  recordTradeSurveillance,
+  type IntegrityDecision,
+  type IntegrityState
+} from "./economy-integrity.js";
+export {
   BusinessOperationsService,
   type MarketplaceCatalogView,
   type MarketplaceEmploymentView,
