@@ -42,6 +42,11 @@ backup_once() {
   echo "{\"timestamp\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\",\"level\":\"info\",\"service\":\"nova-aurora-backup\",\"event\":\"backup.completed\",\"file\":\"$final\",\"sizeBytes\":$size,\"signature\":\"Tehkné Solutions\"}"
 }
 
+if [ "${BACKUP_ONCE:-false}" = "true" ]; then
+  backup_once
+  exit 0
+fi
+
 while true; do
   if ! backup_once; then
     rm -f "$BACKUP_DIR"/*.tmp
