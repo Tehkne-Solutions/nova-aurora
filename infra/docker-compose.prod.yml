@@ -11,6 +11,8 @@ x-app-environment: &app-environment
   REDIS_PORT: "6379"
   REDIS_PASSWORD_FILE: /run/secrets/redis_password
   INTERNAL_API_TOKEN_FILE: /run/secrets/internal_api_token
+  DATA_ENCRYPTION_KEY_FILE: /run/secrets/data_encryption_key
+  ALLOW_RECOVERY_TOKEN_RESPONSE: "false"
   APP_VERSION: ${APP_VERSION:-development}
   GIT_COMMIT_SHA: ${GIT_COMMIT_SHA:-unknown}
   LOG_LEVEL: ${LOG_LEVEL:-info}
@@ -19,6 +21,7 @@ x-app-secrets: &app-secrets
   - postgres_password
   - redis_password
   - internal_api_token
+  - data_encryption_key
 
 x-node-runtime: &node-runtime
   restart: unless-stopped
@@ -78,6 +81,7 @@ services:
       - postgres_password
       - redis_password
       - internal_api_token
+      - data_encryption_key
       - bootstrap_admin_password
       - bootstrap_bob_password
     command: ["node", "infra/docker/migrate-and-secure.mjs"]
@@ -246,6 +250,8 @@ secrets:
     file: ${SECRETS_DIR:-./secrets}/redis_password.txt
   internal_api_token:
     file: ${SECRETS_DIR:-./secrets}/internal_api_token.txt
+  data_encryption_key:
+    file: ${SECRETS_DIR:-./secrets}/data_encryption_key.txt
   bootstrap_admin_password:
     file: ${SECRETS_DIR:-./secrets}/bootstrap_admin_password.txt
   bootstrap_bob_password:
