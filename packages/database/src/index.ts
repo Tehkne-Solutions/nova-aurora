@@ -70,6 +70,22 @@ export {
   type TrustUserState
 } from "./trust-readiness.js";
 export {
+  LaunchAssuranceService,
+  type GuardianRequestView,
+  type LaunchRehearsalView,
+  type ResponseExerciseView,
+  type ServiceComponentView,
+  type TrustReportView
+} from "./launch-assurance.js";
+export {
+  REQUIRED_REHEARSAL_TYPES,
+  REQUIRED_SERVICE_COMPONENTS,
+  evaluateLaunchOperationsReadiness,
+  type LaunchOperationsReadiness,
+  type RequiredRehearsalType,
+  type RequiredServiceComponent
+} from "./launch-assurance-rules.js";
+export {
   EconomyIntegrityService,
   evaluateMarketOrderIntegrity,
   recordTradeSurveillance,
