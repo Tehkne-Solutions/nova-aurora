@@ -189,7 +189,14 @@ export async function registerLaunchAssuranceRoutes(app: FastifyInstance): Promi
       await assurance.completeExercise({
         actorId: identity.userId,
         exerciseId: request.params.exerciseId,
-        ...body
+        status: body.status,
+        findings: body.findings,
+        evidence: body.evidence,
+        actions: body.actions.map((action) => ({
+          title: action.title,
+          ...(action.ownerId === undefined ? {} : { ownerId: action.ownerId }),
+          ...(action.dueAt === undefined ? {} : { dueAt: action.dueAt })
+        }))
       });
       return reply.status(204).send();
     }
