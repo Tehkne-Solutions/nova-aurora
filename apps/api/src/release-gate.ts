@@ -11,14 +11,18 @@ const assurance = new LaunchAssuranceService();
 const beta = new BetaOperationsService();
 
 function mustBeReleased(request: FastifyRequest): boolean {
-  if (["GET", "HEAD", "OPTIONS"].includes(request.method)) return false;
-  const path = request.url.split("?", 1)[0] ?? request.url;
+  if (["GET","HEAD","OPTIONS"].includes(request.method)) return false;
+  const path = request.url.split("?",1)[0] ?? request.url;
   if (path.startsWith("/v1/compliance/")) return false;
   if (path.startsWith("/v1/release/")) return false;
   if (path.startsWith("/v1/trust/")) return false;
   if (path.startsWith("/v1/launch-operations/")) return false;
   if (path.startsWith("/v1/moderation/")) return false;
   if (path.startsWith("/v1/beta-control/")) return false;
+  if (path === "/v1/beta/telemetry") return false;
+  if (path === "/v1/beta/feedback") return false;
+  if (path.startsWith("/v1/community/")) return false;
+  if (path.startsWith("/v1/beta-insights/")) return false;
   return true;
 }
 
