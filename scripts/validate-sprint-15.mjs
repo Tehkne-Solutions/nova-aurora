@@ -2,8 +2,9 @@ import fs from "node:fs";
 import path from "node:path";
 
 const root = process.cwd();
+const migrationPath = "packages/database/sql/022_trust_legal_readiness.sql";
 const required = [
-  "packages/database/sql/016_trust_legal_readiness.sql",
+  migrationPath,
   "packages/database/src/trust-readiness.ts",
   "packages/database/src/trust-readiness.test.ts",
   "apps/api/src/trust-routes.ts",
@@ -23,10 +24,7 @@ if (missing.length) {
   process.exit(1);
 }
 
-const migration = fs.readFileSync(
-  path.join(root, "packages/database/sql/016_trust_legal_readiness.sql"),
-  "utf8"
-);
+const migration = fs.readFileSync(path.join(root, migrationPath), "utf8");
 for (const table of [
   "trust_legal_documents",
   "trust_age_assurance",
@@ -56,4 +54,5 @@ for (const invariant of [
 }
 
 console.log("Sprint 15 validada: Trust, Legal & Launch Readiness");
+console.log("Migration order: release schema 021 -> trust schema 022");
 console.log("Assinatura: Tehkné Solutions");
