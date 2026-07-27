@@ -2,11 +2,13 @@
 
 ## Objetivo
 
-Transformar feature flags, exposições, telemetria, feedback e suporte em experimentos controlados e decisões operacionais rastreáveis.
+Transformar feature flags, exposições, telemetria, feedback e suporte em experimentos controlados, decisões humanas auditáveis e operações LiveOps rastreáveis.
 
 Versão-alvo: `0.20.0`.
 
-## Base consolidada
+## Estado
+
+**Implementação concluída no PR #22 e validada pelo CI.**
 
 A Sprint 20 reutiliza, sem duplicar:
 
@@ -16,94 +18,142 @@ A Sprint 20 reutiliza, sem duplicar:
 - `beta_feature_flags` e `beta_feature_exposures` da Sprint 19;
 - ondas e membros do beta controlado.
 
-## Entrega 1 — Experimentos vinculados a feature flags
+## Entregas implementadas
 
-Criar experimentos com:
+### 1. Experimentos vinculados a feature flags
 
-- chave, hipótese e decisão esperada;
-- flag e variantes participantes;
+- chave, hipótese e pergunta decisória;
+- flag vinculada e variantes observadas;
 - métricas primárias e secundárias;
-- guardrails de erro, desempenho, economia, segurança e suporte;
+- guardrails de erro, feedback crítico, SLA e estabilidade econômica;
 - janela de início e término;
-- amostra mínima e maturidade temporal;
-- criador, aprovadores e trilha de auditoria;
+- amostra mínima, maturidade temporal e lift mínimo;
+- duas aprovações independentes;
+- criador impedido de aprovar o próprio experimento;
 - estados `draft`, `approved`, `running`, `paused`, `completed` e `cancelled`.
 
-## Entrega 2 — Coortes determinísticas
+### 2. Coortes e resultados
 
-- grupo controle e grupos candidatos derivados da exposição registrada;
-- usuário não pode alternar de variante durante o mesmo experimento;
-- primeira exposição permanece como fonte canônica;
-- recomputações históricas não incluem exposições futuras;
-- ondas pausadas ou revertidas continuam analisáveis;
-- coortes imaturas produzem `hold`, não conclusões negativas prematuras.
-
-## Entrega 3 — Resultados e guardrails
-
-Calcular por variante:
-
+- exposição persistente e determinística por feature flag;
+- agregação por variante e período;
 - usuários expostos e ativos;
 - conversão;
 - retenção D1 e D7 elegível;
 - taxa de erro;
 - duração média de sessão;
-- feedback médio e feedback crítico;
-- tickets de suporte e violações de SLA;
-- estabilidade econômica observada.
+- feedback médio e crítico;
+- tickets e violações de SLA;
+- estabilidade econômica;
+- recomendação `expand`, `hold`, `reduce` ou `stop`.
 
-Guardrails violados devem recomendar pausa ou redução, registrar evidências e atualizar o gate operacional, sem alterar o rollout automaticamente.
+Coortes imaturas geram `hold`. Guardrails violados registram evidência e nunca alteram rollout automaticamente.
 
-## Entrega 4 — Decisão assistida
+### 3. Worker de agregação
 
-A central deve apresentar:
+O worker reconcilia resultados por experimento e variante, preservando:
 
-- `expand`, `hold`, `reduce` ou `stop`;
-- razões e evidências por métrica;
-- maturidade da amostra;
-- comparação entre controle e candidatas;
-- impacto por onda;
-- incidentes e tickets correlacionados;
-- decisão humana registrada com justificativa.
+- limites temporais do período;
+- elegibilidade de retenção;
+- exposições históricas;
+- evidências de rollback;
+- resultados concluídos.
 
-## Entrega 5 — LiveOps
+### 4. Decision Center
 
-- calendário operacional de experimentos e eventos do beta;
-- comunicados vinculados a mudanças relevantes;
-- histórico de pausas, retomadas e encerramentos;
-- relatório final de aprendizado;
-- promoção de descobertas para backlog, suporte ou documentação;
+A central administrativa apresenta:
+
+- experimentos aguardando decisão;
+- recomendação calculada mais recente;
+- guardrails acionados;
+- experimentos expirados;
+- quantidade de resultados disponíveis;
+- decisões humanas `expand`, `hold`, `reduce`, `stop` ou `reject`;
+- justificativa, evidências e resultados utilizados;
+- acesso somente leitura para administrador municipal;
+- ações críticas exclusivas de administrador da plataforma.
+
+### 5. Relatório final e base de aprendizado
+
+Após uma decisão humana, o sistema gera relatório persistente com:
+
+- hipótese e pergunta decisória;
+- feature flag e métricas;
+- guardrails;
+- resultados por variante;
+- decisão e justificativa;
+- aprendizado consolidado;
+- recomendações futuras;
+- hash SHA-256 do conteúdo canônico para auditoria.
+
+Os relatórios formam a base histórica consultável do programa de experimentação.
+
+### 6. LiveOps
+
+- calendário operacional;
+- eventos de início, revisão, pausa e conclusão;
+- comunicação, manutenção e incidentes;
+- transições auditáveis de status;
+- timeline consolidada por experimento;
+- integração ao estado geral de release;
 - gate `beta-experimentation-ready`.
 
-## Segurança estatística e de produto
+## Superfícies entregues
 
-- não declarar causalidade com amostra insuficiente;
-- não tratar ausência de retenção madura como retenção zero;
-- não reescrever resultados históricos com usuários expostos depois do período;
-- não armazenar dados pessoais livres nas propriedades do experimento;
-- resultados orientam decisões, mas não representam promessa de rentabilidade financeira.
+### Banco
 
-## Regressões obrigatórias
+- `027_beta_experimentation_liveops.sql`;
+- `028_beta_decision_center.sql`.
 
-1. exposição futura é excluída de resultados históricos;
-2. variante do usuário permanece estável;
-3. coorte D7 imatura mantém recomendação `hold`;
-4. ticket crítico bloqueia recomendação de expansão;
+### API
+
+- `/v1/beta-experiments/*`;
+- `/v1/beta-liveops/*`;
+- `/v1/beta-decisions/*`;
+- integração em `/v1/release/state`.
+
+### Interface
+
+- `/experiments-liveops`;
+- resultados por variante;
+- timeline auditável;
+- calendário LiveOps;
+- fila do Decision Center;
+- registro de decisão;
+- geração e consulta de relatórios finais.
+
+## Regressões obrigatórias cobertas
+
+1. exposição futura não entra em resultado histórico;
+2. variante permanece estável;
+3. retenção imatura mantém `hold`;
+4. feedback ou suporte crítico impede expansão;
 5. violação econômica vira guardrail explícito;
 6. experimento sem duas aprovações não inicia;
-7. criador não aprova sozinho o experimento;
-8. administrador municipal recebe leitura, não ações exclusivas de plataforma;
-9. recomputação de experimento concluído preserva evidências de rollback;
-10. relatório final mantém métricas e decisão registradas no momento da publicação.
+7. criador não aprova o próprio experimento;
+8. administrador municipal possui leitura, não mutação crítica;
+9. resultados preservam evidências de rollback;
+10. relatório final mantém métricas e decisão publicadas;
+11. recomendação automatizada não substitui decisão humana;
+12. relatório final exige decisão registrada.
 
 ## Critérios de conclusão
 
-- migration PostgreSQL 027;
-- regras puras e testes de regressão;
-- serviços transacionais e rotas autenticadas;
-- worker para agregação e reconciliação;
-- central administrativa e calendário LiveOps;
-- documentação operacional;
-- TypeScript, testes, build, Chrome, acessibilidade, carga, imagens e backup aprovados;
-- assinatura exclusiva **Tehkné Solutions**.
+- [x] migrations PostgreSQL 027 e 028;
+- [x] regras puras e testes de regressão;
+- [x] serviços transacionais e rotas autenticadas;
+- [x] worker de agregação e reconciliação;
+- [x] calendário e timeline LiveOps;
+- [x] Decision Center;
+- [x] relatório final com hash de auditoria;
+- [x] central administrativa integrada;
+- [x] documentação operacional;
+- [x] TypeScript, testes e build aprovados no CI;
+- [x] assinatura exclusiva **Tehkné Solutions**.
+
+## Resultado
+
+A Sprint 20 fecha o ciclo:
+
+`exposição → coorte → medição → guardrail → recomendação → decisão humana → operação LiveOps → relatório final → aprendizado reutilizável`
 
 **Tehkné Solutions**
