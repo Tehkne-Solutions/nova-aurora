@@ -35,13 +35,6 @@ type BetaState = Readonly<{
     status: string;
     priority: string;
   }>[];
-  announcements: readonly Readonly<{
-    id: string;
-    announcementKey: string;
-    title: string;
-    status: string;
-    severity: string;
-  }>[];
   reports: readonly Readonly<{
     id: string;
     reportKey: string;
@@ -94,6 +87,22 @@ function dateTime(value: string): string {
   return new Intl.DateTimeFormat("pt-BR",{
     dateStyle: "short",timeStyle: "short"
   }).format(new Date(value));
+}
+
+function postRequest(
+  url: string,
+  body?: unknown,
+  idempotencyKey?: string
+): Promise<Response> {
+  const init: RequestInit = { method: "POST" };
+  const headers: Record<string,string> = {};
+  if (body !== undefined) {
+    headers["content-type"] = "application/json";
+    init.body = JSON.stringify(body);
+  }
+  if (idempotencyKey) headers["idempotency-key"] = idempotencyKey;
+  if (Object.keys(headers).length > 0) init.headers = headers;
+  return fetch(url,init);
 }
 
 export default function BetaInsightsPage() {
@@ -162,11 +171,7 @@ export default function BetaInsightsPage() {
   async function recompute() {
     setBusy(true);
     try {
-      const response = await fetch(`${API_URL}/v1/beta-insights/recompute`, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({})
-      });
+      const response = await postRequest(`${API_URL}/v1/beta-insights/recompute`,{});
       const payload = await response.json() as { computed?: number; message?: string };
       if (!response.ok) throw new Error(payload.message ?? "Métricas não calculadas.");
       setMessage(`${payload.computed ?? 0} onda(s) recalculada(s).`);
@@ -182,14 +187,11 @@ export default function BetaInsightsPage() {
     event.preventDefault();
     setBusy(true);
     try {
-      const response = await fetch(`${API_URL}/v1/beta-insights/announcements`, {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-          "idempotency-key": `announcement-${crypto.randomUUID()}`
-        },
-        body: JSON.stringify({ title,body,audience: "beta",severity: "info" })
-      });
+      const response = await postRequest(
+        `${API_URL}/v1/beta-insights/announcements`,
+        { title,body,audience: "beta",severity: "info" },
+        `announcement-${crypto.randomUUID()}`
+      );
       const payload = await response.json() as {
         announcement?: { id: string };
         message?: string;
@@ -197,9 +199,8 @@ export default function BetaInsightsPage() {
       if (!response.ok || !payload.announcement) {
         throw new Error(payload.message ?? "Anúncio não criado.");
       }
-      const publish = await fetch(
-        `${API_URL}/v1/beta-insights/announcements/${payload.announcement.id}/publish`,
-        { method: "POST" }
+      const publish = await postRequest(
+        `${API_URL}/v1/beta-insights/announcements/${payload.announcement.id}/publish`
       );
       if (!publish.ok) throw new Error("Anúncio criado, mas não publicado.");
       setMessage("Anúncio criado e publicado.");
@@ -219,17 +220,13 @@ export default function BetaInsightsPage() {
     }
     setBusy(true);
     try {
-      const response = await fetch(
+      const response = await postRequest(
         `${API_URL}/v1/beta-support/admin/tickets/${selectedTicketId}`,
         {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({
-            status: ticketStatus,
-            priority: ticketPriority,
-            message: ticketMessage,
-            visibleToUser: true
-          })
+          status: ticketStatus,
+          priority: ticketPriority,
+          message: ticketMessage,
+          visibleToUser: true
         }
       );
       if (!response.ok) {
@@ -250,13 +247,9 @@ export default function BetaInsightsPage() {
     setBusy(true);
     try {
       const variants = flagVariants.split(",").map((value) => value.trim()).filter(Boolean);
-      const response = await fetch(`${API_URL}/v1/feature-flags`,{
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-          "idempotency-key": `feature-${crypto.randomUUID()}`
-        },
-        body: JSON.stringify({
+      const response = await postRequest(
+        `${API_URL}/v1/feature-flags`,
+        {
           flagKey,
           label: flagLabel,
           description: flagDescription,
@@ -265,8 +258,9 @@ export default function BetaInsightsPage() {
           rolloutPercent: flagPercent,
           targetWaveIds: [],
           safetyThresholds: {}
-        })
-      });
+        },
+        `feature-${crypto.randomUUID()}`
+      );
       const payload = await response.json() as { flag?: FeatureFlag; message?: string };
       if (!response.ok || !payload.flag) {
         throw new Error(payload.message ?? "Feature flag não criada.");
@@ -297,11 +291,7 @@ export default function BetaInsightsPage() {
         : action === "pause"
           ? { reason: "Pausa operacional solicitada pela central do beta." }
           : undefined;
-      const response = await fetch(endpoint,{
-        method: "POST",
-        headers: bodyPayload ? { "content-type": "application/json" } : undefined,
-        body: bodyPayload ? JSON.stringify(bodyPayload) : undefined
-      });
+      const response = await postRequest(endpoint,bodyPayload);
       if (!response.ok) {
         const payload = await response.json() as { message?: string };
         throw new Error(payload.message ?? "Operação de rollout não concluída.");
