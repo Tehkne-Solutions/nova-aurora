@@ -1,6 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import {
+  BetaExperimentService,
   BetaOperationsService,
   BetaSupportRolloutService,
   BetaTelemetryService,
@@ -9,6 +10,7 @@ import {
   TransactionalEmailService
 } from "@nova-aurora/database";
 import { requireRole } from "./auth-context.js";
+import { registerBetaExperimentRoutes } from "./beta-experiment-routes.js";
 import { registerBetaSupportRolloutRoutes } from "./beta-support-rollout-routes.js";
 import { registerBetaTelemetryRoutes } from "./beta-telemetry-routes.js";
 import { registerLaunchAssuranceRoutes } from "./launch-assurance-routes.js";
@@ -21,6 +23,7 @@ const assurance = new LaunchAssuranceService();
 const beta = new BetaOperationsService();
 const telemetry = new BetaTelemetryService();
 const supportRollouts = new BetaSupportRolloutService();
+const experiments = new BetaExperimentService();
 
 const inviteSchema = z.object({
   label: z.string().min(3).max(160),
@@ -41,12 +44,13 @@ export async function registerReleaseRoutes(app: FastifyInstance): Promise<void>
   await registerModerationBetaRoutes(app);
   await registerBetaTelemetryRoutes(app);
   await registerBetaSupportRolloutRoutes(app);
+  await registerBetaExperimentRoutes(app);
 
   app.get("/v1/release/state", async (request) => {
     await requireRole(app, request, ["platform-admin","municipal-admin"]);
     const [
       summary,gates,invites,emails,trustState,operations,
-      moderation,betaState,insights,supportRolloutState
+      moderation,betaState,insights,supportRolloutState,experimentState
     ] = await Promise.all([
       release.summary(),
       release.gates(),
@@ -57,7 +61,8 @@ export async function registerReleaseRoutes(app: FastifyInstance): Promise<void>
       beta.moderationState(),
       beta.state(),
       telemetry.adminState(),
-      supportRollouts.adminState()
+      supportRollouts.adminState(),
+      experiments.adminState()
     ]);
     return {
       summary,gates,invites,emails,
@@ -67,6 +72,7 @@ export async function registerReleaseRoutes(app: FastifyInstance): Promise<void>
       beta: betaState,
       insights,
       supportRollouts: supportRolloutState,
+      experiments: experimentState,
       signature: "Tehkné Solutions"
     };
   });
