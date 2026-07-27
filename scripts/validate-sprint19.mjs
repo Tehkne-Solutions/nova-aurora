@@ -1,10 +1,14 @@
 import { readFile } from "node:fs/promises";
+import { dirname,resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 
+const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)),"..");
 const required = [
   "packages/database/sql/026_beta_support_feature_rollouts.sql",
   "packages/database/src/beta-support-rollout-rules.ts",
   "packages/database/src/beta-support-rollout-rules.test.ts",
   "packages/database/src/beta-support-rollouts.ts",
+  "packages/database/src/beta-support-rollout-operations.ts",
   "apps/api/src/beta-support-rollout-routes.ts",
   "apps/worker/src/worker.ts",
   "docs/SPRINT_19_SUPPORT_FEATURE_ROLLOUTS.md",
@@ -13,7 +17,7 @@ const required = [
 
 const contents = await Promise.all(required.map(async (path) => ({
   path,
-  content: await readFile(path,"utf8")
+  content: await readFile(resolve(repositoryRoot,path),"utf8")
 })));
 const byPath = new Map(contents.map((item) => [item.path,item.content]));
 const combined = contents.map(({ content }) => content).join("\n");
@@ -49,7 +53,8 @@ for (const expected of [
   "beta-support-sla-operational",
   "feature-rollout-prepared",
   "validate:sprint19",
-  "betaSupportRollouts.syncGates()"
+  "betaSupportRollouts.syncGates()",
+  "updateFlagRollout"
 ]) {
   if (!combined.includes(expected)) throw new Error(`Entrega ausente: ${expected}`);
 }
@@ -58,7 +63,8 @@ for (const regression of [
   "O criador não pode aprovar a própria feature flag",
   "ON CONFLICT (flag_id,user_id) DO NOTHING",
   "supportDeadlines(input.priority,String(ticket.created_at))",
-  "beta-support-ticket:${input.userId}:${input.idempotencyKey}"
+  "beta-support-ticket:${input.userId}:${input.idempotencyKey}",
+  "Para ampliar uma flag ativa, pause-a e obtenha novas aprovações"
 ]) {
   if (!combined.includes(regression)) {
     throw new Error(`Regressão sem proteção explícita: ${regression}`);
