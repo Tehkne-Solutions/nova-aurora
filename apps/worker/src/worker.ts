@@ -138,7 +138,10 @@ async function tick(): Promise<void> {
   const completedDate = new Date(Date.now()-86_400_000).toISOString().slice(0,10);
   const telemetryWavesComputed = completedDate === lastTelemetryDate
     ? 0
-    : await betaTelemetry.recomputeDailyMetrics("worker",completedDate);
+    : await betaTelemetry.recomputeDailyMetrics(
+        "worker",
+        new Date(`${completedDate}T00:00:00.000Z`)
+      );
   if (telemetryWavesComputed >= 0) lastTelemetryDate = completedDate;
 
   metrics.ticks += 1;
