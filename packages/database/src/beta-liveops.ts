@@ -49,11 +49,13 @@ export class BetaLiveOpsService extends EconomyRepositoryBase {
             ${input.actorId}::uuid,${input.actorId}::uuid
           ) RETURNING *
         `;
+        const created=rows[0];
+        if (!created) throw new Error("Falha ao criar evento LiveOps.");
         await this.outbox(tx,id,"beta.liveops.created",{
           eventKey:input.eventKey,eventType:input.eventType,severity:input.severity,
           experimentId:input.experimentId ?? null
         });
-        return this.mapEvent(rows[0]);
+        return this.mapEvent(created);
       }
     );
   }
