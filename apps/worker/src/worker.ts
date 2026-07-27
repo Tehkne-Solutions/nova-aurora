@@ -3,6 +3,7 @@ import { createServer,type IncomingMessage,type ServerResponse } from "node:http
 import { Worker } from "bullmq";
 import { Redis } from "ioredis";
 import {
+  BetaSupportRolloutService,
   BetaTelemetryService,
   closeDb,
   db,
@@ -73,6 +74,7 @@ const economy = new MarketProductionService();
 const privacy = new PrivacyComplianceService();
 const transactionalEmail = new TransactionalEmailService();
 const betaTelemetry = new BetaTelemetryService();
+const betaSupportRollouts = new BetaSupportRolloutService();
 const redisUrl = process.env.REDIS_URL ?? "redis://localhost:6379";
 const publisher = new Redis(redisUrl,{ maxRetriesPerRequest: null });
 const sweepSeconds = Number(process.env.ECONOMY_TICK_SECONDS ?? 30);
@@ -84,6 +86,7 @@ const metrics = {
   completedJobs: 0,failedJobs: 0,processedDeletions: 0,
   emailsSent: 0,emailsFailed: 0,emailsDead: 0,
   telemetryWavesComputed: 0,announcementsPublished: 0,
+  supportGateReconciliations: 0,
   lastTickTimestamp: 0,postgresReady: false,redisReady: false
 };
 
@@ -135,6 +138,7 @@ async function tick(): Promise<void> {
   const processedDeletions = await privacy.processDueDeletions(25);
   const emailDelivery = await transactionalEmail.processDue(50);
   const announcementsPublished = await betaTelemetry.processScheduledAnnouncements();
+  await betaSupportRollouts.syncGates();
   const completedDate = new Date(Date.now()-86_400_000).toISOString().slice(0,10);
   const telemetryWavesComputed = completedDate === lastTelemetryDate
     ? 0
@@ -153,10 +157,12 @@ async function tick(): Promise<void> {
   metrics.emailsDead += emailDelivery.dead;
   metrics.announcementsPublished += announcementsPublished;
   metrics.telemetryWavesComputed += telemetryWavesComputed;
+  metrics.supportGateReconciliations += 1;
   metrics.lastTickTimestamp = Date.now();
   log("info","world.tick.completed",{
     completedProduction,publishedEvents,processedDeletions,emailDelivery,
-    announcementsPublished,telemetryWavesComputed,durationMs: Date.now()-started
+    announcementsPublished,telemetryWavesComputed,supportGatesReconciled: true,
+    durationMs: Date.now()-started
   });
 }
 
@@ -210,6 +216,9 @@ function renderMetrics(): string {
     "# HELP nova_aurora_community_announcements_published_total Scheduled announcements published.",
     "# TYPE nova_aurora_community_announcements_published_total counter",
     `nova_aurora_community_announcements_published_total ${metrics.announcementsPublished}`,
+    "# HELP nova_aurora_support_gate_reconciliations_total Support and rollout gate reconciliations.",
+    "# TYPE nova_aurora_support_gate_reconciliations_total counter",
+    `nova_aurora_support_gate_reconciliations_total ${metrics.supportGateReconciliations}`,
     "# HELP nova_aurora_worker_last_tick_timestamp_seconds Last successful tick.",
     "# TYPE nova_aurora_worker_last_tick_timestamp_seconds gauge",
     `nova_aurora_worker_last_tick_timestamp_seconds ${metrics.lastTickTimestamp/1000}`,

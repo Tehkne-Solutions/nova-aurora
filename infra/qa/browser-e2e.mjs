@@ -167,13 +167,30 @@ await retry(async () => {
 }, 20_000);
 report.login = { path: await evaluate("location.pathname"), authenticated: true };
 
-for (const path of ["/account", "/release", "/trust"]) {
+for (const path of ["/account", "/release", "/trust", "/feedback", "/beta-insights"]) {
   await navigate(path);
   const audit = await evaluate(auditExpression());
   report.pages.push(audit);
+  if (audit.path !== path) {
+    throw new Error(`A rota autenticada ${path} redirecionou para ${audit.path}.`);
+  }
   if (path === "/release") {
     const heading = await evaluate("document.querySelector('h1')?.textContent || ''");
     if (!String(heading).includes("beta")) throw new Error("Central de release não renderizou.");
+  }
+  if (path === "/feedback") {
+    const heading = await evaluate("document.querySelector('h1')?.textContent || ''");
+    if (!String(heading).includes("Suporte")) {
+      throw new Error("Central de feedback e suporte não renderizou.");
+    }
+  }
+  if (path === "/beta-insights") {
+    const heading = await evaluate("document.querySelector('h1')?.textContent || ''");
+    const restricted = String(heading).includes("Aprendizado do beta");
+    const operational = String(heading).includes("Aprender, responder e liberar");
+    if (!restricted && !operational) {
+      throw new Error("Central de suporte e rollout não renderizou.");
+    }
   }
 }
 

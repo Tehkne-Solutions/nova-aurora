@@ -1,0 +1,179 @@
+import { BetaSupportRolloutService as BaseBetaSupportRolloutService } from "./beta-support-rollouts.js";
+import type { FeatureEvaluation } from "./beta-support-rollouts.js";
+
+function retentionDays(): number {
+  const configured = Number(process.env.BETA_TELEMETRY_RETENTION_DAYS ?? 30);
+  if (!Number.isFinite(configured)) return 30;
+  return Math.min(365,Math.max(7,Math.floor(configured)));
+}
+
+export class BetaSupportRolloutService extends BaseBetaSupportRolloutService {
+  override async syncGates(actorId?: string): Promise<void> {
+    if (!actorId) {
+      await this.sql`
+        DELETE FROM beta_telemetry_events
+        WHERE occurred_at<now()-make_interval(days=>${retentionDays()})
+      `;
+    }
+    await super.syncGates(actorId);
+  }
+
+  override async evaluateFlag(input: {
+    userId: string;
+    flagKey: string;
+  }): Promise<FeatureEvaluation> {
+    const rows = await this.sql`
+      SELECT status,default_variant
+      FROM beta_feature_flags
+      WHERE flag_key=${input.flagKey}
+      LIMIT 1
+    `;
+    const flag = rows[0];
+    if (!flag) {
+      return {
+        flagKey: input.flagKey,
+        enabled: false,
+        variant: "control",
+        bucket: 0,
+        waveId: null,
+        exposedAt: null
+      };
+    }
+    if (String(flag.status) !== "active") {
+      return {
+        flagKey: input.flagKey,
+        enabled: false,
+        variant: String(flag.default_variant),
+        bucket: 0,
+        waveId: null,
+        exposedAt: null
+      };
+    }
+    return super.evaluateFlag(input);
+  }
+
+  async updateFlagRollout(input: {
+    actorId: string;
+    flagId: string;
+    rolloutPercent: number;
+    reason: string;
+  }): Promise<void> {
+    const nextPercent = Math.min(100,Math.max(0,Math.round(input.rolloutPercent)));
+    await this.sql.begin("isolation level serializable",async (tx) => {
+      const actors = await tx`
+        SELECT account.id
+        FROM users account
+        WHERE account.id=${input.actorId}::uuid AND account.status='active'
+          AND EXISTS (
+            SELECT 1 FROM user_roles role
+            WHERE role.user_id=account.id AND role.role='platform-admin'
+          )
+      `;
+      if (!actors[0]) {
+        throw new Error("A alteração do rollout exige administrador de plataforma ativo.");
+      }
+      const flags = await tx`
+        SELECT id,flag_key,status,rollout_percent
+        FROM beta_feature_flags
+        WHERE id=${input.flagId}::uuid
+        FOR UPDATE
+      `;
+      const flag = flags[0];
+      if (!flag) throw new Error("Feature flag não encontrada.");
+      const currentPercent = Number(flag.rollout_percent);
+      const status = String(flag.status);
+      if (status === "retired") {
+        throw new Error("Feature flag aposentada não aceita alteração de rollout.");
+      }
+      if (status === "active" && nextPercent > currentPercent) {
+        throw new Error(
+          "Para ampliar uma flag ativa, pause-a e obtenha novas aprovações."
+        );
+      }
+      if (status === "active") {
+        await tx`
+          UPDATE beta_feature_flags SET
+            rollout_percent=${nextPercent},updated_by=${input.actorId}::uuid,
+            updated_at=now()
+          WHERE id=${input.flagId}::uuid
+        `;
+      } else {
+        await tx`
+          UPDATE beta_feature_flags SET
+            rollout_percent=${nextPercent},status='draft',
+            updated_by=${input.actorId}::uuid,updated_at=now()
+          WHERE id=${input.flagId}::uuid
+        `;
+        await tx`
+          DELETE FROM beta_feature_flag_approvals
+          WHERE flag_id=${input.flagId}::uuid
+        `;
+      }
+      await this.outbox(tx,input.flagId,"beta.feature-flag.rollout-updated",{
+        flagKey: flag.flag_key,
+        previousPercent: currentPercent,
+        rolloutPercent: nextPercent,
+        reason: input.reason.slice(0,1000),
+        approvalsReset: status !== "active"
+      });
+    });
+    await this.syncGates(input.actorId);
+  }
+
+  override async activateFlag(input: {
+    actorId: string;
+    flagId: string;
+  }): Promise<void> {
+    await this.sql.begin("isolation level serializable",async (tx) => {
+      const actors = await tx`
+        SELECT account.id
+        FROM users account
+        WHERE account.id=${input.actorId}::uuid AND account.status='active'
+          AND EXISTS (
+            SELECT 1 FROM user_roles role
+            WHERE role.user_id=account.id AND role.role='platform-admin'
+          )
+      `;
+      if (!actors[0]) {
+        throw new Error("A ativação exige um administrador de plataforma ativo.");
+      }
+
+      const flags = await tx`
+        SELECT id,flag_key,status
+        FROM beta_feature_flags
+        WHERE id=${input.flagId}::uuid
+        FOR UPDATE
+      `;
+      const flag = flags[0];
+      if (!flag) throw new Error("Feature flag não encontrada.");
+
+      const decisions = await tx`
+        SELECT
+          count(*) FILTER (WHERE decision='approve')::int approvals,
+          count(*) FILTER (WHERE decision='reject')::int rejections
+        FROM beta_feature_flag_approvals
+        WHERE flag_id=${input.flagId}::uuid
+      `;
+      if (
+        Number(decisions[0]?.approvals ?? 0) < 2
+        || Number(decisions[0]?.rejections ?? 0) > 0
+      ) {
+        throw new Error("A flag exige duas aprovações e nenhuma rejeição.");
+      }
+      if (!["ready","paused"].includes(String(flag.status))) {
+        throw new Error("A flag precisa estar pronta ou pausada para ativação.");
+      }
+
+      await tx`
+        UPDATE beta_feature_flags SET
+          status='active',activated_at=COALESCE(activated_at,now()),paused_at=NULL,
+          updated_by=${input.actorId}::uuid,updated_at=now()
+        WHERE id=${input.flagId}::uuid
+      `;
+      await this.outbox(tx,input.flagId,"beta.feature-flag.activated",{
+        flagKey: flag.flag_key
+      });
+    });
+    await this.syncGates(input.actorId);
+  }
+}

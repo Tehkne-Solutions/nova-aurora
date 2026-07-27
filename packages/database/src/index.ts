@@ -120,6 +120,24 @@ export {
   type BetaHealthResult,
   type BetaRecommendation
 } from "./beta-telemetry-rules.js";
+export { BetaSupportRolloutService } from "./beta-support-rollout-operations.js";
+export {
+  type FeatureEvaluation,
+  type FeatureFlagView,
+  type SupportTicketView,
+  type SupportUpdateView
+} from "./beta-support-rollouts.js";
+export {
+  SUPPORT_SLA_MINUTES,
+  approvalDerivedStatus,
+  deterministicFeatureDecision,
+  evaluateSupportRolloutReadiness,
+  supportDeadlines,
+  type FeatureFlagStatus,
+  type SupportPriority,
+  type SupportRolloutReadiness,
+  type SupportTicketStatus
+} from "./beta-support-rollout-rules.js";
 export {
   EconomyIntegrityService,
   evaluateMarketOrderIntegrity,
