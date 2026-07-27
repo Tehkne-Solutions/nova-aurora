@@ -139,6 +139,20 @@ export {
   type SupportTicketStatus
 } from "./beta-support-rollout-rules.js";
 export {
+  BetaExperimentService,
+  type ExperimentResultView,
+  type ExperimentStatus,
+  type ExperimentView
+} from "./beta-experiments.js";
+export {
+  evaluateExperiment,
+  type ExperimentEvaluation,
+  type ExperimentGuardrails,
+  type ExperimentPrimaryMetric,
+  type ExperimentRecommendation,
+  type ExperimentVariantMetrics
+} from "./beta-experiment-rules.js";
+export {
   EconomyIntegrityService,
   evaluateMarketOrderIntegrity,
   recordTradeSurveillance,
