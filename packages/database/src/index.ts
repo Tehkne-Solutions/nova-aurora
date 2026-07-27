@@ -154,6 +154,14 @@ export {
   type ExperimentVariantMetrics
 } from "./beta-experiment-rules.js";
 export {
+  BetaLiveOpsService,
+  type ExperimentTimelineEntry,
+  type LiveOpsEventType,
+  type LiveOpsEventView,
+  type LiveOpsSeverity,
+  type LiveOpsStatus
+} from "./beta-liveops.js";
+export {
   EconomyIntegrityService,
   evaluateMarketOrderIntegrity,
   recordTradeSurveillance,
