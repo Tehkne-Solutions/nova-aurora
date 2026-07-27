@@ -1,6 +1,22 @@
 import { BetaSupportRolloutService as BaseBetaSupportRolloutService } from "./beta-support-rollouts.js";
 
+function retentionDays(): number {
+  const configured = Number(process.env.BETA_TELEMETRY_RETENTION_DAYS ?? 30);
+  if (!Number.isFinite(configured)) return 30;
+  return Math.min(365,Math.max(7,Math.floor(configured)));
+}
+
 export class BetaSupportRolloutService extends BaseBetaSupportRolloutService {
+  override async syncGates(actorId?: string): Promise<void> {
+    if (!actorId) {
+      await this.sql`
+        DELETE FROM beta_telemetry_events
+        WHERE occurred_at<now()-make_interval(days=>${retentionDays()})
+      `;
+    }
+    await super.syncGates(actorId);
+  }
+
   override async activateFlag(input: {
     actorId: string;
     flagId: string;
