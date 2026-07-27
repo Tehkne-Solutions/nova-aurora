@@ -120,8 +120,8 @@ export {
   type BetaHealthResult,
   type BetaRecommendation
 } from "./beta-telemetry-rules.js";
+export { BetaSupportRolloutService } from "./beta-support-rollout-operations.js";
 export {
-  BetaSupportRolloutService,
   type FeatureEvaluation,
   type FeatureFlagView,
   type SupportTicketView,
