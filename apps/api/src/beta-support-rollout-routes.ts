@@ -49,6 +49,10 @@ const approvalSchema = z.object({
 });
 
 const pauseSchema = z.object({ reason: z.string().min(3).max(1000) });
+const rolloutSchema = z.object({
+  rolloutPercent: z.number().int().min(0).max(100),
+  reason: z.string().min(3).max(1000)
+});
 
 export async function registerBetaSupportRolloutRoutes(
   app: FastifyInstance
@@ -118,6 +122,20 @@ export async function registerBetaSupportRolloutRoutes(
       const identity = await requireRole(app,request,["platform-admin"]);
       const body = approvalSchema.parse(request.body);
       await operations.recordFlagApproval({
+        actorId: identity.userId,
+        flagId: request.params.flagId,
+        ...body
+      });
+      return reply.status(204).send();
+    }
+  );
+
+  app.post<{ Params: { flagId: string } }>(
+    "/v1/feature-flags/:flagId/rollout",
+    async (request,reply) => {
+      const identity = await requireRole(app,request,["platform-admin"]);
+      const body = rolloutSchema.parse(request.body);
+      await operations.updateFlagRollout({
         actorId: identity.userId,
         flagId: request.params.flagId,
         ...body
