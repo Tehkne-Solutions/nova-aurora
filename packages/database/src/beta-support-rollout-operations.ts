@@ -52,6 +52,74 @@ export class BetaSupportRolloutService extends BaseBetaSupportRolloutService {
     return super.evaluateFlag(input);
   }
 
+  async updateFlagRollout(input: {
+    actorId: string;
+    flagId: string;
+    rolloutPercent: number;
+    reason: string;
+  }): Promise<void> {
+    const nextPercent = Math.min(100,Math.max(0,Math.round(input.rolloutPercent)));
+    await this.sql.begin("isolation level serializable",async (tx) => {
+      const actors = await tx`
+        SELECT account.id
+        FROM users account
+        WHERE account.id=${input.actorId}::uuid AND account.status='active'
+          AND EXISTS (
+            SELECT 1 FROM user_roles role
+            WHERE role.user_id=account.id AND role.role='platform-admin'
+          )
+      `;
+      if (!actors[0]) {
+        throw new Error("A alteração do rollout exige administrador de plataforma ativo.");
+      }
+      const flags = await tx`
+        SELECT id,flag_key,status,rollout_percent
+        FROM beta_feature_flags
+        WHERE id=${input.flagId}::uuid
+        FOR UPDATE
+      `;
+      const flag = flags[0];
+      if (!flag) throw new Error("Feature flag não encontrada.");
+      const currentPercent = Number(flag.rollout_percent);
+      const status = String(flag.status);
+      if (status === "retired") {
+        throw new Error("Feature flag aposentada não aceita alteração de rollout.");
+      }
+      if (status === "active" && nextPercent > currentPercent) {
+        throw new Error(
+          "Para ampliar uma flag ativa, pause-a e obtenha novas aprovações."
+        );
+      }
+      if (status === "active") {
+        await tx`
+          UPDATE beta_feature_flags SET
+            rollout_percent=${nextPercent},updated_by=${input.actorId}::uuid,
+            updated_at=now()
+          WHERE id=${input.flagId}::uuid
+        `;
+      } else {
+        await tx`
+          UPDATE beta_feature_flags SET
+            rollout_percent=${nextPercent},status='draft',
+            updated_by=${input.actorId}::uuid,updated_at=now()
+          WHERE id=${input.flagId}::uuid
+        `;
+        await tx`
+          DELETE FROM beta_feature_flag_approvals
+          WHERE flag_id=${input.flagId}::uuid
+        `;
+      }
+      await this.outbox(tx,input.flagId,"beta.feature-flag.rollout-updated",{
+        flagKey: flag.flag_key,
+        previousPercent: currentPercent,
+        rolloutPercent: nextPercent,
+        reason: input.reason.slice(0,1000),
+        approvalsReset: status !== "active"
+      });
+    });
+    await this.syncGates(input.actorId);
+  }
+
   override async activateFlag(input: {
     actorId: string;
     flagId: string;
