@@ -41,7 +41,13 @@ export async function registerBetaLiveOpsRoutes(app:FastifyInstance):Promise<voi
   app.get("/v1/beta-liveops/calendar",async (request)=>{
     await requireRole(app,request,["platform-admin","municipal-admin"]);
     const query=calendarQuery.parse(request.query);
-    return {events:await liveOps.calendar(query),signature:"Tehkné Solutions"};
+    return {
+      events:await liveOps.calendar({
+        ...(query.from===undefined?{}:{from:query.from}),
+        ...(query.to===undefined?{}:{to:query.to})
+      }),
+      signature:"Tehkné Solutions"
+    };
   });
 
   app.get<{Params:{experimentId:string}}>(
