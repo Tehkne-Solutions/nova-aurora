@@ -162,6 +162,12 @@ export {
   type LiveOpsStatus
 } from "./beta-liveops.js";
 export {
+  BetaDecisionCenterService,
+  type DecisionAction,
+  type DecisionQueueItem,
+  type ExperimentReportView
+} from "./beta-decision-center.js";
+export {
   EconomyIntegrityService,
   evaluateMarketOrderIntegrity,
   recordTradeSurveillance,
