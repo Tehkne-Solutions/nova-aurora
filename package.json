@@ -11,7 +11,8 @@
     "db:migrate": "pnpm --filter @nova-aurora/database db:migrate",
     "validate:sprint15": "node scripts/validate-sprint-15.mjs",
     "validate:sprint16": "node scripts/validate-sprint16.mjs",
-    "validate:sprint17": "node scripts/validate-sprint17.mjs"
+    "validate:sprint17": "node scripts/validate-sprint17.mjs",
+    "validate:sprint18": "node scripts/validate-sprint18.mjs"
   },
   "devDependencies": {
     "turbo": "^2.8.0",

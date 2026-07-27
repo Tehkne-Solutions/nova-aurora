@@ -102,6 +102,25 @@ export {
 } from "./controlled-beta-rules.js";
 export { evaluateModerationReadiness } from "./moderation-operations-rules.js";
 export {
+  BetaCommunityService,
+  type BetaFeedbackView,
+  type CommunityAnnouncementView
+} from "./beta-community.js";
+export {
+  BetaTelemetryService,
+  type BetaDailyMetricView,
+  type BetaLearningReportView
+} from "./beta-telemetry.js";
+export {
+  calculateBetaHealth,
+  evaluateBetaCommunityReadiness,
+  retentionPercent,
+  type BetaCommunityReadiness,
+  type BetaHealthInput,
+  type BetaHealthResult,
+  type BetaRecommendation
+} from "./beta-telemetry-rules.js";
+export {
   EconomyIntegrityService,
   evaluateMarketOrderIntegrity,
   recordTradeSurveillance,

@@ -9,7 +9,7 @@ import {
   useState,
   type ReactNode
 } from "react";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname,useRouter } from "next/navigation";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
 const TOKEN_KEY = "nova-aurora.session";
@@ -63,6 +63,9 @@ function isProtectedPath(pathname: string): boolean {
     "/moderation",
     "/beta-control",
     "/appeal",
+    "/community",
+    "/feedback",
+    "/beta-insights",
     "/guardian-request"
   ].some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`));
 }
@@ -82,9 +85,9 @@ function isPublicAuthRequest(requestUrl: string): boolean {
 export function AuthProvider({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
-  const [ready, setReady] = useState(false);
-  const [token, setToken] = useState<string | null>(null);
-  const [identity, setIdentity] = useState<Identity | null>(null);
+  const [ready,setReady] = useState(false);
+  const [token,setToken] = useState<string | null>(null);
+  const [identity,setIdentity] = useState<Identity | null>(null);
 
   useEffect(() => {
     const originalFetch = window.fetch.bind(window);
@@ -100,43 +103,43 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           ? input.toString()
           : input;
       const isApi = requestUrl.startsWith(API_URL);
-      if (!isApi) return originalFetch(input, init);
+      if (!isApi) return originalFetch(input,init);
 
       const activeToken = localStorage.getItem(TOKEN_KEY);
       const activeIdentity = storedIdentity();
       const publicAuth = isPublicAuthRequest(requestUrl);
       const headers = new Headers(input instanceof Request ? input.headers : undefined);
-      new Headers(init?.headers).forEach((value, name) => headers.set(name, value));
+      new Headers(init?.headers).forEach((value,name) => headers.set(name,value));
 
       const legacyActor = headers.get("x-actor-email");
       headers.delete("x-actor-email");
       if (activeToken && !publicAuth) {
-        headers.set("authorization", `Bearer ${activeToken}`);
+        headers.set("authorization",`Bearer ${activeToken}`);
       }
       if (legacyActor
         && activeIdentity
         && legacyActor.toLowerCase() !== activeIdentity.email.toLowerCase()
         && activeIdentity.roles.includes("platform-admin")) {
-        headers.set("x-actor-context", legacyActor);
+        headers.set("x-actor-context",legacyActor);
       }
 
-      const response = await originalFetch(input, { ...init, headers });
+      const response = await originalFetch(input,{ ...init,headers });
       if (response.status === 401 && !publicAuth) {
         clearSession();
         setToken(null);
         setIdentity(null);
         if (window.location.pathname !== "/login") {
-          window.location.assign(`/login?returnTo=${encodeURIComponent(window.location.pathname)}`);
+          window.location.assign(
+            `/login?returnTo=${encodeURIComponent(window.location.pathname)}`
+          );
         }
       }
       return response;
     };
 
     setReady(true);
-    return () => {
-      window.fetch = originalFetch;
-    };
-  }, []);
+    return () => { window.fetch = originalFetch; };
+  },[]);
 
   useEffect(() => {
     if (!ready || !isProtectedPath(pathname)) return;
@@ -144,27 +147,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       router.replace(`/login?returnTo=${encodeURIComponent(pathname)}`);
       return;
     }
-    void fetch(`${API_URL}/v1/auth/me`, { cache: "no-store" })
+    void fetch(`${API_URL}/v1/auth/me`,{ cache: "no-store" })
       .then(async (response) => {
         if (!response.ok) return;
         const nextIdentity = await response.json() as Identity;
-        localStorage.setItem(IDENTITY_KEY, JSON.stringify(nextIdentity));
+        localStorage.setItem(IDENTITY_KEY,JSON.stringify(nextIdentity));
         setIdentity(nextIdentity);
       })
       .catch(() => undefined);
-  }, [pathname, ready, router, token]);
+  },[pathname,ready,router,token]);
 
-  const setSession = useCallback((nextToken: string, nextIdentity: Identity) => {
-    localStorage.setItem(TOKEN_KEY, nextToken);
-    localStorage.setItem(IDENTITY_KEY, JSON.stringify(nextIdentity));
+  const setSession = useCallback((nextToken: string,nextIdentity: Identity) => {
+    localStorage.setItem(TOKEN_KEY,nextToken);
+    localStorage.setItem(IDENTITY_KEY,JSON.stringify(nextIdentity));
     setToken(nextToken);
     setIdentity(nextIdentity);
-  }, []);
+  },[]);
 
   const logout = useCallback(async () => {
     try {
       if (localStorage.getItem(TOKEN_KEY)) {
-        await fetch(`${API_URL}/v1/auth/logout`, { method: "POST" });
+        await fetch(`${API_URL}/v1/auth/logout`,{ method: "POST" });
       }
     } finally {
       clearSession();
@@ -172,14 +175,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setIdentity(null);
       router.replace("/login");
     }
-  }, [router]);
+  },[router]);
 
   const value = useMemo<AuthContextValue>(() => ({
-    identity,
-    token,
-    setSession,
-    logout
-  }), [identity, logout, setSession, token]);
+    identity,token,setSession,logout
+  }),[identity,logout,setSession,token]);
 
   if (!ready) return <div aria-live="polite">Inicializando identidade segura…</div>;
   if (isProtectedPath(pathname) && !token) {
