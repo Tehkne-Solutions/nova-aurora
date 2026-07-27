@@ -1,4 +1,5 @@
 import { BetaSupportRolloutService as BaseBetaSupportRolloutService } from "./beta-support-rollouts.js";
+import type { FeatureEvaluation } from "./beta-support-rollouts.js";
 
 function retentionDays(): number {
   const configured = Number(process.env.BETA_TELEMETRY_RETENTION_DAYS ?? 30);
@@ -15,6 +16,40 @@ export class BetaSupportRolloutService extends BaseBetaSupportRolloutService {
       `;
     }
     await super.syncGates(actorId);
+  }
+
+  override async evaluateFlag(input: {
+    userId: string;
+    flagKey: string;
+  }): Promise<FeatureEvaluation> {
+    const rows = await this.sql`
+      SELECT status,default_variant
+      FROM beta_feature_flags
+      WHERE flag_key=${input.flagKey}
+      LIMIT 1
+    `;
+    const flag = rows[0];
+    if (!flag) {
+      return {
+        flagKey: input.flagKey,
+        enabled: false,
+        variant: "control",
+        bucket: 0,
+        waveId: null,
+        exposedAt: null
+      };
+    }
+    if (String(flag.status) !== "active") {
+      return {
+        flagKey: input.flagKey,
+        enabled: false,
+        variant: String(flag.default_variant),
+        bucket: 0,
+        waveId: null,
+        exposedAt: null
+      };
+    }
+    return super.evaluateFlag(input);
   }
 
   override async activateFlag(input: {
