@@ -2,6 +2,7 @@ import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import {
   BetaExperimentService,
+  BetaLiveOpsService,
   BetaOperationsService,
   BetaSupportRolloutService,
   BetaTelemetryService,
@@ -11,6 +12,7 @@ import {
 } from "@nova-aurora/database";
 import { requireRole } from "./auth-context.js";
 import { registerBetaExperimentRoutes } from "./beta-experiment-routes.js";
+import { registerBetaLiveOpsRoutes } from "./beta-liveops-routes.js";
 import { registerBetaSupportRolloutRoutes } from "./beta-support-rollout-routes.js";
 import { registerBetaTelemetryRoutes } from "./beta-telemetry-routes.js";
 import { registerLaunchAssuranceRoutes } from "./launch-assurance-routes.js";
@@ -24,6 +26,7 @@ const beta = new BetaOperationsService();
 const telemetry = new BetaTelemetryService();
 const supportRollouts = new BetaSupportRolloutService();
 const experiments = new BetaExperimentService();
+const liveOps = new BetaLiveOpsService();
 
 const inviteSchema = z.object({
   label: z.string().min(3).max(160),
@@ -45,12 +48,13 @@ export async function registerReleaseRoutes(app: FastifyInstance): Promise<void>
   await registerBetaTelemetryRoutes(app);
   await registerBetaSupportRolloutRoutes(app);
   await registerBetaExperimentRoutes(app);
+  await registerBetaLiveOpsRoutes(app);
 
   app.get("/v1/release/state", async (request) => {
     await requireRole(app, request, ["platform-admin","municipal-admin"]);
     const [
       summary,gates,invites,emails,trustState,operations,
-      moderation,betaState,insights,supportRolloutState,experimentState
+      moderation,betaState,insights,supportRolloutState,experimentState,liveOpsState
     ] = await Promise.all([
       release.summary(),
       release.gates(),
@@ -62,7 +66,8 @@ export async function registerReleaseRoutes(app: FastifyInstance): Promise<void>
       beta.state(),
       telemetry.adminState(),
       supportRollouts.adminState(),
-      experiments.adminState()
+      experiments.adminState(),
+      liveOps.adminState()
     ]);
     return {
       summary,gates,invites,emails,
@@ -73,6 +78,7 @@ export async function registerReleaseRoutes(app: FastifyInstance): Promise<void>
       insights,
       supportRollouts: supportRolloutState,
       experiments: experimentState,
+      liveOps: liveOpsState,
       signature: "Tehkné Solutions"
     };
   });
