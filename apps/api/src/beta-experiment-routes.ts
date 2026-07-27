@@ -52,7 +52,21 @@ export async function registerBetaExperimentRoutes(app:FastifyInstance): Promise
     const body = experimentSchema.parse(request.body);
     return {
       experiment:await experiments.createExperiment({
-        actorId:identity.userId,idempotencyKey:idempotencyKey(app,request),...body
+        actorId:identity.userId,
+        idempotencyKey:idempotencyKey(app,request),
+        experimentKey:body.experimentKey,
+        flagId:body.flagId,
+        label:body.label,
+        hypothesis:body.hypothesis,
+        decisionQuestion:body.decisionQuestion,
+        primaryMetric:body.primaryMetric,
+        secondaryMetrics:body.secondaryMetrics,
+        guardrails:body.guardrails,
+        minimumSample:body.minimumSample,
+        minimumRuntimeHours:body.minimumRuntimeHours,
+        minimumLiftPercent:body.minimumLiftPercent,
+        ...(body.startsAt===undefined ? {} : {startsAt:body.startsAt}),
+        ...(body.endsAt===undefined ? {} : {endsAt:body.endsAt})
       }),signature:"Tehkné Solutions"
     };
   });
