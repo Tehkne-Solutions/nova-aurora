@@ -2,12 +2,14 @@ import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import {
   BetaOperationsService,
+  BetaSupportRolloutService,
   BetaTelemetryService,
   LaunchAssuranceService,
   ReleaseOperationsService,
   TransactionalEmailService
 } from "@nova-aurora/database";
 import { requireRole } from "./auth-context.js";
+import { registerBetaSupportRolloutRoutes } from "./beta-support-rollout-routes.js";
 import { registerBetaTelemetryRoutes } from "./beta-telemetry-routes.js";
 import { registerLaunchAssuranceRoutes } from "./launch-assurance-routes.js";
 import { registerModerationBetaRoutes } from "./moderation-beta-routes.js";
@@ -18,6 +20,7 @@ const email = new TransactionalEmailService();
 const assurance = new LaunchAssuranceService();
 const beta = new BetaOperationsService();
 const telemetry = new BetaTelemetryService();
+const supportRollouts = new BetaSupportRolloutService();
 
 const inviteSchema = z.object({
   label: z.string().min(3).max(160),
@@ -37,21 +40,25 @@ export async function registerReleaseRoutes(app: FastifyInstance): Promise<void>
   await registerLaunchAssuranceRoutes(app);
   await registerModerationBetaRoutes(app);
   await registerBetaTelemetryRoutes(app);
+  await registerBetaSupportRolloutRoutes(app);
 
   app.get("/v1/release/state", async (request) => {
     await requireRole(app, request, ["platform-admin","municipal-admin"]);
-    const [summary,gates,invites,emails,trustState,operations,moderation,betaState,insights] =
-      await Promise.all([
-        release.summary(),
-        release.gates(),
-        release.invites(),
-        email.recent(100),
-        assurance.adminState(),
-        assurance.operationsState(),
-        beta.moderationState(),
-        beta.state(),
-        telemetry.adminState()
-      ]);
+    const [
+      summary,gates,invites,emails,trustState,operations,
+      moderation,betaState,insights,supportRolloutState
+    ] = await Promise.all([
+      release.summary(),
+      release.gates(),
+      release.invites(),
+      email.recent(100),
+      assurance.adminState(),
+      assurance.operationsState(),
+      beta.moderationState(),
+      beta.state(),
+      telemetry.adminState(),
+      supportRollouts.adminState()
+    ]);
     return {
       summary,gates,invites,emails,
       trust: trustState,
@@ -59,6 +66,7 @@ export async function registerReleaseRoutes(app: FastifyInstance): Promise<void>
       moderation,
       beta: betaState,
       insights,
+      supportRollouts: supportRolloutState,
       signature: "Tehkné Solutions"
     };
   });
