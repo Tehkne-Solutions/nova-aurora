@@ -144,6 +144,7 @@ export {
   type ExperimentStatus,
   type ExperimentView
 } from "./beta-experiments.js";
+export { BetaExperimentAggregationService } from "./beta-experiment-aggregation.js";
 export {
   evaluateExperiment,
   type ExperimentEvaluation,
