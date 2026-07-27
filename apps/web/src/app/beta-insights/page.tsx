@@ -61,7 +61,8 @@ export default function BetaInsightsPage() {
     "A onda permanece controlada enquanto avaliamos retenção, erros e feedback."
   );
 
-  const isAdmin = identity?.roles.includes("platform-admin")
+  const isPlatformAdmin = identity?.roles.includes("platform-admin") ?? false;
+  const isAdmin = isPlatformAdmin
     || identity?.roles.includes("municipal-admin");
 
   const load = useCallback(async () => {
@@ -204,38 +205,46 @@ export default function BetaInsightsPage() {
               <li>Feedback médio: {latest.averageFeedbackScore.toFixed(2)}</li>
             </ul>
           ) : <p>Nenhuma métrica calculada.</p>}
-          <button
-            className={styles.button}
-            type="button"
-            onClick={() => void recompute()}
-            disabled={busy}
-          >
-            Recalcular hoje
-          </button>
+          {isPlatformAdmin ? (
+            <button
+              className={styles.button}
+              type="button"
+              onClick={() => void recompute()}
+              disabled={busy}
+            >
+              Recalcular dia concluído
+            </button>
+          ) : (
+            <p>Recomputação disponível somente para administração da plataforma.</p>
+          )}
         </article>
 
         <article className={styles.section}>
           <p className={styles.eyebrow}>COMUNICAÇÃO</p>
           <h2>Publicar atualização</h2>
-          <form className={styles.form} onSubmit={createAnnouncement}>
-            <label>
-              Título
-              <input
-                className={styles.input}
-                value={title}
-                onChange={(event) => setTitle(event.target.value)}
-              />
-            </label>
-            <label>
-              Mensagem
-              <textarea
-                className={styles.textarea}
-                value={body}
-                onChange={(event) => setBody(event.target.value)}
-              />
-            </label>
-            <button className={styles.button} disabled={busy}>Publicar</button>
-          </form>
+          {isPlatformAdmin ? (
+            <form className={styles.form} onSubmit={createAnnouncement}>
+              <label>
+                Título
+                <input
+                  className={styles.input}
+                  value={title}
+                  onChange={(event) => setTitle(event.target.value)}
+                />
+              </label>
+              <label>
+                Mensagem
+                <textarea
+                  className={styles.textarea}
+                  value={body}
+                  onChange={(event) => setBody(event.target.value)}
+                />
+              </label>
+              <button className={styles.button} disabled={busy}>Publicar</button>
+            </form>
+          ) : (
+            <p>Publicação disponível somente para administração da plataforma.</p>
+          )}
         </article>
       </section>
 

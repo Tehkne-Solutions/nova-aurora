@@ -5,6 +5,8 @@ export type BetaHealthInput = Readonly<{
   activeUsers: number;
   retentionD1Percent: number;
   retentionD7Percent: number;
+  retentionD1EligibleUsers: number;
+  retentionD7EligibleUsers: number;
   conversionPercent: number;
   errorRatePercent: number;
   averageFeedbackScore: number;
@@ -33,7 +35,9 @@ export function retentionPercent(
 }
 
 export function calculateBetaHealth(input: BetaHealthInput): BetaHealthResult {
-  const sampleReady = input.activatedUsers >= 25;
+  const sampleReady = input.activatedUsers >= 25
+    && input.retentionD1EligibleUsers >= 25
+    && input.retentionD7EligibleUsers >= 25;
 
   const reliabilityScore = clamp(100 - input.errorRatePercent * 20);
   const retentionScore = clamp(
@@ -52,14 +56,22 @@ export function calculateBetaHealth(input: BetaHealthInput): BetaHealthResult {
   ) * 100) / 100;
 
   const reasons: string[] = [];
-  if (!sampleReady) reasons.push("Amostra inferior a 25 usuários ativados.");
+  if (input.activatedUsers < 25) {
+    reasons.push("Amostra inferior a 25 usuários ativados.");
+  }
+  if (input.retentionD1EligibleUsers < 25) {
+    reasons.push("Coorte D1 ainda não possui 25 usuários elegíveis.");
+  }
+  if (input.retentionD7EligibleUsers < 25) {
+    reasons.push("Coorte D7 ainda não possui 25 usuários elegíveis.");
+  }
   if (input.criticalFeedback > 0) {
     reasons.push(`Feedback crítico aberto: ${input.criticalFeedback}.`);
   }
   if (input.errorRatePercent > 2) {
     reasons.push(`Taxa de erro acima de 2%: ${input.errorRatePercent.toFixed(2)}%.`);
   }
-  if (input.retentionD7Percent < 25) {
+  if (input.retentionD7EligibleUsers >= 25 && input.retentionD7Percent < 25) {
     reasons.push(`Retenção D7 abaixo de 25%: ${input.retentionD7Percent.toFixed(2)}%.`);
   }
   if (input.averageFeedbackScore < 3) {
@@ -71,7 +83,7 @@ export function calculateBetaHealth(input: BetaHealthInput): BetaHealthResult {
   const recommendation: BetaRecommendation =
     input.criticalFeedback > 0
       || input.errorRatePercent > 5
-      || healthScore < 55
+      || (sampleReady && healthScore < 55)
       ? "reduce"
       : sampleReady
         && healthScore >= 80

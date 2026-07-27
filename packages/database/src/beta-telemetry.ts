@@ -79,8 +79,8 @@ export class BetaTelemetryService extends BetaCommunityService {
       FROM beta_wave_members member
       JOIN beta_rollout_waves wave ON wave.id=member.wave_id
       WHERE member.user_id=${input.userId}::uuid
-        AND member.status IN ('active','completed')
-        AND wave.status IN ('active','completed')
+        AND member.status IN ('active','completed','paused')
+        AND wave.status IN ('active','completed','paused')
       ORDER BY wave.activated_at DESC NULLS LAST,wave.created_at DESC
       LIMIT 1
     `;
@@ -107,7 +107,7 @@ export class BetaTelemetryService extends BetaCommunityService {
     const metricDate = dateOnly(targetDate);
     const waves = await this.sql`
       SELECT id,wave_key FROM beta_rollout_waves
-      WHERE status IN ('active','completed','paused') ORDER BY created_at
+      WHERE status IN ('active','completed','paused','rolled-back') ORDER BY created_at
     `;
     for (const wave of waves) {
       await this.computeWaveMetric(
@@ -220,7 +220,9 @@ export class BetaTelemetryService extends BetaCommunityService {
     const [members,events,retention,feedback,economy] = await Promise.all([
       this.sql`
         SELECT count(*)::int activated_users FROM beta_wave_members
-        WHERE wave_id=${waveId}::uuid AND activated_at IS NOT NULL
+        WHERE wave_id=${waveId}::uuid
+          AND activated_at IS NOT NULL
+          AND activated_at<${metricDate}::date+interval '1 day'
       `,
       this.sql`
         SELECT count(DISTINCT user_id)::int active_users,
@@ -312,6 +314,8 @@ export class BetaTelemetryService extends BetaCommunityService {
       activeUsers: active,
       retentionD1Percent: retentionD1,
       retentionD7Percent: retentionD7,
+      retentionD1EligibleUsers: eligibleD1,
+      retentionD7EligibleUsers: eligibleD7,
       conversionPercent: conversion,
       errorRatePercent: errorRate,
       averageFeedbackScore: Number(feedback[0]?.average_score ?? 0),
@@ -335,7 +339,8 @@ export class BetaTelemetryService extends BetaCommunityService {
         ${Number(feedback[0]?.critical_feedback ?? 0)},${economyScore},
         ${health.healthScore},${health.recommendation},
         ${JSON.stringify({
-          computedBy: actorId,reasons: health.reasons,sampleReady: health.sampleReady
+          computedBy: actorId,reasons: health.reasons,sampleReady: health.sampleReady,
+          eligibleD1,eligibleD7
         })}::jsonb,now()
       )
       ON CONFLICT (metric_date,wave_id,cohort_key) DO UPDATE SET

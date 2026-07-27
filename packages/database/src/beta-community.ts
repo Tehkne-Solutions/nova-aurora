@@ -222,11 +222,17 @@ export class BetaCommunityService extends EconomyRepositoryBase {
         AND announcement.publish_at<=now()
         AND (announcement.expires_at IS NULL OR announcement.expires_at>now())
         AND (
-          announcement.audience IN ('all','beta')
+          announcement.audience='all'
+          OR (announcement.audience='beta' AND EXISTS (
+            SELECT 1 FROM beta_wave_members member
+            WHERE member.user_id=${userId}::uuid
+              AND member.status IN ('active','paused','completed')
+          ))
           OR (announcement.audience='wave' AND EXISTS (
             SELECT 1 FROM beta_wave_members member
             WHERE member.wave_id=announcement.wave_id
               AND member.user_id=${userId}::uuid
+              AND member.status IN ('active','paused','completed')
           ))
         )
       ORDER BY
@@ -285,19 +291,29 @@ export class BetaCommunityService extends EconomyRepositoryBase {
   }
 
   async processScheduledAnnouncements(): Promise<number> {
-    const published = await this.sql`
-      UPDATE community_announcements SET
-        status='published',published_at=now(),updated_at=now()
-      WHERE status='scheduled' AND publish_at<=now()
-        AND (expires_at IS NULL OR expires_at>now())
-      RETURNING id
-    `;
-    const expired = await this.sql`
-      UPDATE community_announcements SET status='expired',updated_at=now()
-      WHERE status='published' AND expires_at IS NOT NULL AND expires_at<=now()
-      RETURNING id
-    `;
-    if (published.length || expired.length) await this.syncCommunityGate();
+    const published = await this.sql.begin(async (tx) => {
+      const rows = await tx`
+        UPDATE community_announcements SET
+          status='published',published_at=now(),updated_at=now()
+        WHERE status='scheduled' AND publish_at<=now()
+          AND (expires_at IS NULL OR expires_at>now())
+        RETURNING id,title,audience,wave_id
+      `;
+      for (const row of rows) {
+        await this.outbox(tx, String(row.id), "community.announcement.published", {
+          title: row.title,
+          audience: row.audience,
+          waveId: row.wave_id
+        });
+      }
+      await tx`
+        UPDATE community_announcements SET status='expired',updated_at=now()
+        WHERE status IN ('scheduled','published')
+          AND expires_at IS NOT NULL AND expires_at<=now()
+      `;
+      return rows;
+    });
+    await this.syncCommunityGate();
     return published.length;
   }
 

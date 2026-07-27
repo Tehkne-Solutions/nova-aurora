@@ -135,11 +135,11 @@ async function tick(): Promise<void> {
   const processedDeletions = await privacy.processDueDeletions(25);
   const emailDelivery = await transactionalEmail.processDue(50);
   const announcementsPublished = await betaTelemetry.processScheduledAnnouncements();
-  const today = new Date().toISOString().slice(0,10);
-  const telemetryWavesComputed = today === lastTelemetryDate
+  const completedDate = new Date(Date.now()-86_400_000).toISOString().slice(0,10);
+  const telemetryWavesComputed = completedDate === lastTelemetryDate
     ? 0
-    : await betaTelemetry.recomputeDailyMetrics("worker");
-  if (telemetryWavesComputed >= 0) lastTelemetryDate = today;
+    : await betaTelemetry.recomputeDailyMetrics("worker",completedDate);
+  if (telemetryWavesComputed >= 0) lastTelemetryDate = completedDate;
 
   metrics.ticks += 1;
   metrics.completedProduction += completedProduction;

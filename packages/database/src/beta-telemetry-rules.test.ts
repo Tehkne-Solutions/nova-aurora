@@ -17,6 +17,8 @@ test("recomenda expansão somente com amostra e saúde suficientes", () => {
     activeUsers: 86,
     retentionD1Percent: 82,
     retentionD7Percent: 72,
+    retentionD1EligibleUsers: 100,
+    retentionD7EligibleUsers: 100,
     conversionPercent: 90,
     errorRatePercent: 0.5,
     averageFeedbackScore: 4.8,
@@ -34,6 +36,8 @@ test("recomenda redução diante de risco crítico", () => {
     activeUsers: 65,
     retentionD1Percent: 55,
     retentionD7Percent: 30,
+    retentionD1EligibleUsers: 100,
+    retentionD7EligibleUsers: 100,
     conversionPercent: 60,
     errorRatePercent: 1,
     averageFeedbackScore: 4,
@@ -41,6 +45,24 @@ test("recomenda redução diante de risco crítico", () => {
     economyStabilityScore: 88
   });
   assert.equal(result.recommendation,"reduce");
+});
+
+test("mantém a onda quando as coortes de retenção ainda não amadureceram", () => {
+  const result = calculateBetaHealth({
+    activatedUsers: 25,
+    activeUsers: 20,
+    retentionD1Percent: 0,
+    retentionD7Percent: 0,
+    retentionD1EligibleUsers: 0,
+    retentionD7EligibleUsers: 0,
+    conversionPercent: 80,
+    errorRatePercent: 0.2,
+    averageFeedbackScore: 4.5,
+    criticalFeedback: 0,
+    economyStabilityScore: 95
+  });
+  assert.equal(result.sampleReady,false);
+  assert.equal(result.recommendation,"hold");
 });
 
 test("bloqueia prontidão comunitária com feedback crítico", () => {
