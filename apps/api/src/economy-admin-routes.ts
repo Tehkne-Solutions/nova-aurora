@@ -13,6 +13,7 @@ const anomalyQuery=historyQuery.extend({
   snapshotId:z.string().uuid().optional()
 });
 const trendQuery=z.object({days:z.coerce.number().int().min(7).max(90).default(30)});
+const priorityQueueQuery=historyQuery.extend({severity:z.enum(["info","warning","critical"]).optional(),breachedOnly:z.enum(["true","false"]).transform((value)=>value==="true").default(false)});
 const reasonSchema=z.object({reason:z.string().trim().min(10).max(1000)});
 const computeSchema=z.object({day:z.coerce.date().optional(),toleranceMinor:z.number().int().min(0).max(Number.MAX_SAFE_INTEGER).default(0)});
 
@@ -101,6 +102,36 @@ async function anomalyTrends(days:number){
   return {days,daily,backlogDelta:last-first,backlogTrend:last>first?"growing":last<first?"shrinking":"stable",slaBySeverity};
 }
 
+async function anomalyPriorityQueue(input:{severity?:"info"|"warning"|"critical"|undefined;breachedOnly:boolean;limit:number;offset:number}){
+  const severity=input.severity??null;
+  const rows=await economySql`
+    WITH ranked AS (
+      SELECT anomaly.*,
+        CASE anomaly.severity WHEN 'critical' THEN 60 WHEN 'warning' THEN 240 ELSE 1440 END::int sla_target_minutes,
+        extract(epoch FROM (now()-anomaly.detected_at))/60.0 age_minutes,
+        (SELECT count(*)::int FROM economy_anomaly_actions action WHERE action.anomaly_id=anomaly.id AND action.action='reopened') reopen_count
+      FROM economy_snapshot_anomalies anomaly
+      WHERE anomaly.resolved_at IS NULL AND (${severity}::text IS NULL OR anomaly.severity=${severity})
+    )
+    SELECT *,age_minutes>sla_target_minutes AS sla_breached,
+      greatest(age_minutes-sla_target_minutes,0) breach_minutes,
+      CASE severity WHEN 'critical' THEN 300 WHEN 'warning' THEN 200 ELSE 100 END
+        +least(floor(age_minutes/30),100)::int
+        +least(reopen_count*20,100)::int
+        +CASE WHEN age_minutes>sla_target_minutes THEN 150 ELSE 0 END AS priority_score
+    FROM ranked
+    WHERE (${input.breachedOnly}::boolean=false OR age_minutes>sla_target_minutes)
+    ORDER BY priority_score DESC,detected_at ASC,id ASC
+    LIMIT ${input.limit} OFFSET ${input.offset}
+  `;
+  return rows.map((row)=>({
+    id:String(row.id),snapshotId:String(row.snapshot_id),anomalyKey:String(row.anomaly_key),severity:String(row.severity),metricKey:String(row.metric_key),
+    detectedAt:new Date(String(row.detected_at)).toISOString(),ageMinutes:numberValue(row.age_minutes),slaTargetMinutes:numberValue(row.sla_target_minutes),
+    slaBreached:Boolean(row.sla_breached),breachMinutes:numberValue(row.breach_minutes),reopenCount:numberValue(row.reopen_count),priorityScore:numberValue(row.priority_score),
+    evidence:row.evidence
+  }));
+}
+
 export async function registerEconomyAdminRoutes(app:FastifyInstance):Promise<void>{
   app.get("/v1/admin/economy/state",async(request)=>{
     await requireRole(app,request,["platform-admin","municipal-admin"]);
@@ -128,6 +159,12 @@ export async function registerEconomyAdminRoutes(app:FastifyInstance):Promise<vo
     await requireRole(app,request,["platform-admin","municipal-admin"]);
     const query=trendQuery.parse(request.query);
     return {trends:await anomalyTrends(query.days),generatedAt:new Date().toISOString(),signature:"Tehkné Solutions"};
+  });
+
+  app.get("/v1/admin/economy/anomalies/priority-queue",async(request)=>{
+    await requireRole(app,request,["platform-admin","municipal-admin"]);
+    const query=priorityQueueQuery.parse(request.query);
+    return {items:await anomalyPriorityQueue(query),pagination:{limit:query.limit,offset:query.offset},filters:{severity:query.severity??null,breachedOnly:query.breachedOnly},generatedAt:new Date().toISOString(),signature:"Tehkné Solutions"};
   });
 
   app.get<{Params:{anomalyId:string}}>("/v1/admin/economy/anomalies/:anomalyId/history",async(request)=>{
