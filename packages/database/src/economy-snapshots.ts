@@ -1,7 +1,7 @@
 import { createHash,randomUUID } from "node:crypto";
 import { EconomyRepositoryBase } from "./economy-base.js";
 import { economyAlertToAnomaly } from "./economy-alert-persistence.js";
-import { evaluateEconomyAlerts } from "./economy-alert-rules.js";
+import { evaluateEconomyAlerts,type EconomyAlertCode,type EconomyAlertSeverity } from "./economy-alert-rules.js";
 import { deriveSnapshotMetrics,reconcileMoneySupply } from "./economy-simulation-rules.js";
 
 export type EconomyScopeType="city"|"region"|"platform";
@@ -22,6 +22,10 @@ export type EconomyAnomalyView=Readonly<{
   id:string;snapshotId:string;anomalyKey:string;severity:"info"|"warning"|"critical";
   metricKey:string;observedValue:number|null;expectedMin:number|null;expectedMax:number|null;
   evidence:unknown;detectedAt:string;resolvedAt:string|null;
+}>;
+export type EconomyAnomalyFilters=Readonly<{
+  code?:EconomyAlertCode;severity?:EconomyAlertSeverity;resolved?:boolean;snapshotId?:string;
+  limit?:number;offset?:number;
 }>;
 export type EconomyAdminState=Readonly<{
   latest:EconomySnapshotView|null;snapshotCount:number;divergentCount:number;
@@ -86,6 +90,17 @@ export class EconomySnapshotService extends EconomyRepositoryBase {
     const safeOffset=Math.max(Math.trunc(offset),0);
     const rows=await this.sql`SELECT * FROM economy_snapshots WHERE scope_type='platform' AND scope_id IS NULL ORDER BY window_end DESC,computed_at DESC LIMIT ${safeLimit} OFFSET ${safeOffset}`;
     return rows.map((row)=>this.map(row));
+  }
+
+  async listAnomalies(filters:EconomyAnomalyFilters={}):Promise<readonly EconomyAnomalyView[]>{
+    const safeLimit=Math.min(Math.max(Math.trunc(filters.limit??30),1),200);
+    const safeOffset=Math.max(Math.trunc(filters.offset??0),0);
+    const code=filters.code??null;
+    const severity=filters.severity??null;
+    const resolved=filters.resolved??null;
+    const snapshotId=filters.snapshotId??null;
+    const rows=await this.sql`SELECT * FROM economy_snapshot_anomalies WHERE (${code}::text IS NULL OR anomaly_key=${code}) AND (${severity}::text IS NULL OR severity=${severity}) AND (${resolved}::boolean IS NULL OR (resolved_at IS NOT NULL)=${resolved}) AND (${snapshotId}::uuid IS NULL OR snapshot_id=${snapshotId}::uuid) ORDER BY detected_at DESC,id DESC LIMIT ${safeLimit} OFFSET ${safeOffset}`;
+    return rows.map((row)=>this.mapAnomaly(row));
   }
 
   async detail(snapshotId:string):Promise<Readonly<{snapshot:EconomySnapshotView;reconciliation:EconomyReconciliationView|null;anomalies:readonly EconomyAnomalyView[]}>>{
