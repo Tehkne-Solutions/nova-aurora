@@ -1,5 +1,7 @@
 import { createHash,randomUUID } from "node:crypto";
 import { EconomyRepositoryBase } from "./economy-base.js";
+import { economyAlertToAnomaly } from "./economy-alert-persistence.js";
+import { evaluateEconomyAlerts } from "./economy-alert-rules.js";
 import { deriveSnapshotMetrics,reconcileMoneySupply } from "./economy-simulation-rules.js";
 
 export type EconomyScopeType="city"|"region"|"platform";
@@ -50,7 +52,7 @@ export class EconomySnapshotService extends EconomyRepositoryBase {
       if(existing[0])return this.map(existing[0]);
       const balanceRows=await tx`SELECT coalesce(sum(greatest(balance.available_minor+balance.reserved_minor,0)),0)::bigint total FROM ledger_account_balances balance`;
       const volumeRows=await tx`SELECT (coalesce(sum(abs(entry.amount_minor)),0)::bigint / 2)::bigint AS total FROM ledger_entries entry JOIN ledger_transactions ledger_tx ON ledger_tx.id=entry.transaction_id WHERE ledger_tx.created_at>=${input.windowStart.toISOString()}::timestamptz AND ledger_tx.created_at<${input.windowEnd.toISOString()}::timestamptz`;
-      const previousRows=await tx`SELECT price_index FROM economy_snapshots WHERE scope_type='platform' AND scope_id IS NULL AND window_end<=${input.windowStart.toISOString()}::timestamptz AND price_index IS NOT NULL ORDER BY window_end DESC LIMIT 1`;
+      const previousRows=await tx`SELECT price_index,transaction_volume_minor FROM economy_snapshots WHERE scope_type='platform' AND scope_id IS NULL AND window_end<=${input.windowStart.toISOString()}::timestamptz ORDER BY window_end DESC LIMIT 1`;
       const moneySupplyMinor=Number(balanceRows[0]?.total??0);
       const transactionVolumeMinor=Number(volumeRows[0]?.total??0);
       if(!Number.isSafeInteger(moneySupplyMinor)||!Number.isSafeInteger(transactionVolumeMinor))throw new Error("Agregado monetário excede o limite seguro.");
@@ -61,8 +63,15 @@ export class EconomySnapshotService extends EconomyRepositoryBase {
       const sourceHash=createHash("sha256").update(JSON.stringify(canonical)).digest("hex");
       const rows=await tx`INSERT INTO economy_snapshots(id,scope_type,scope_id,window_start,window_end,status,ledger_cutoff,money_supply_minor,transaction_volume_minor,money_velocity,price_index,inflation_rate_percent,production,consumption,employment_rate_percent,wealth_concentration_percent,fiscal_balance_minor,indicators,assumptions,source_hash,reconciled_at) VALUES(${randomUUID()}::uuid,'platform',NULL,${input.windowStart.toISOString()}::timestamptz,${input.windowEnd.toISOString()}::timestamptz,'reconciled',${ledgerCutoff.toISOString()}::timestamptz,${moneySupplyMinor},${transactionVolumeMinor},${derived.moneyVelocity},${input.priceIndex??null},${derived.inflationRatePercent},${JSON.stringify(input.production??{})}::jsonb,${JSON.stringify(input.consumption??{})}::jsonb,${input.employmentRatePercent??null},${input.wealthConcentrationPercent??null},${Math.trunc(input.fiscalBalanceMinor??0)},${JSON.stringify(input.indicators??{})}::jsonb,${JSON.stringify(input.assumptions??{})}::jsonb,${sourceHash},now()) RETURNING *`;
       const row=rows[0];if(!row)throw new Error("Snapshot econômico não gerado.");
-      await tx`INSERT INTO economy_snapshot_reconciliations(id,snapshot_id,ledger_total_minor,snapshot_total_minor,difference_minor,tolerance_minor,is_balanced,evidence) VALUES(${randomUUID()}::uuid,${String(row.id)}::uuid,${moneySupplyMinor},${moneySupplyMinor},${reconciliation.differenceMinor},${toleranceMinor},true,${JSON.stringify({ledgerCutoff:ledgerCutoff.toISOString(),sourceHash})}::jsonb)`;
-      await this.outbox(tx,String(row.id),"economy.snapshot.computed",{scopeType:"platform",scopeId:null,windowStart:input.windowStart.toISOString(),windowEnd:input.windowEnd.toISOString(),status:"reconciled",sourceHash});
+      const snapshotId=String(row.id);
+      await tx`INSERT INTO economy_snapshot_reconciliations(id,snapshot_id,ledger_total_minor,snapshot_total_minor,difference_minor,tolerance_minor,is_balanced,evidence) VALUES(${randomUUID()}::uuid,${snapshotId}::uuid,${moneySupplyMinor},${moneySupplyMinor},${reconciliation.differenceMinor},${toleranceMinor},true,${JSON.stringify({ledgerCutoff:ledgerCutoff.toISOString(),sourceHash})}::jsonb)`;
+      const alerts=evaluateEconomyAlerts({inflationRatePercent:derived.inflationRatePercent,moneyVelocity:derived.moneyVelocity,transactionVolumeMinor,previousTransactionVolumeMinor:nullableNumber(previousRows[0]?.transaction_volume_minor),reconciliationDifferenceMinor:reconciliation.differenceMinor,reconciliationToleranceMinor:toleranceMinor});
+      for(const alert of alerts){
+        const anomaly=economyAlertToAnomaly(alert);
+        await tx`INSERT INTO economy_snapshot_anomalies(id,snapshot_id,anomaly_key,severity,metric_key,observed_value,expected_min,expected_max,evidence) VALUES(${randomUUID()}::uuid,${snapshotId}::uuid,${anomaly.anomalyKey},${anomaly.severity},${anomaly.metricKey},${anomaly.observedValue},${anomaly.expectedMin},${anomaly.expectedMax},${JSON.stringify(anomaly.evidence)}::jsonb) ON CONFLICT(snapshot_id,anomaly_key) DO NOTHING`;
+      }
+      if(alerts.length>0)await this.outbox(tx,snapshotId,"economy.snapshot.alerts_detected",{scopeType:"platform",scopeId:null,alertCount:alerts.length,codes:alerts.map((alert)=>alert.code),severities:alerts.map((alert)=>alert.severity)});
+      await this.outbox(tx,snapshotId,"economy.snapshot.computed",{scopeType:"platform",scopeId:null,windowStart:input.windowStart.toISOString(),windowEnd:input.windowEnd.toISOString(),status:"reconciled",sourceHash});
       return this.map(row);
     });
   }
