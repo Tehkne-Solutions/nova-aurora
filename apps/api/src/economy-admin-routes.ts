@@ -13,7 +13,7 @@ const anomalyQuery=historyQuery.extend({
   snapshotId:z.string().uuid().optional()
 });
 const trendQuery=z.object({days:z.coerce.number().int().min(7).max(90).default(30)});
-const priorityQueueQuery=historyQuery.extend({severity:z.enum(["info","warning","critical"]).optional(),breachedOnly:z.enum(["true","false"]).transform((value)=>value==="true").default("false")});
+const priorityQueueQuery=historyQuery.extend({severity:z.enum(["info","warning","critical"]).optional(),breachedOnly:z.enum(["true","false"]).transform((value)=>value==="true").default(false)});
 const reasonSchema=z.object({reason:z.string().trim().min(10).max(1000)});
 const computeSchema=z.object({day:z.coerce.date().optional(),toleranceMinor:z.number().int().min(0).max(Number.MAX_SAFE_INTEGER).default(0)});
 
@@ -102,7 +102,7 @@ async function anomalyTrends(days:number){
   return {days,daily,backlogDelta:last-first,backlogTrend:last>first?"growing":last<first?"shrinking":"stable",slaBySeverity};
 }
 
-async function anomalyPriorityQueue(input:{severity?:"info"|"warning"|"critical";breachedOnly:boolean;limit:number;offset:number}){
+async function anomalyPriorityQueue(input:{severity?:"info"|"warning"|"critical"|undefined;breachedOnly:boolean;limit:number;offset:number}){
   const severity=input.severity??null;
   const rows=await economySql`
     WITH ranked AS (
