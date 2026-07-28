@@ -10,6 +10,7 @@ import { registerBusinessOperationsRoutes } from "./business-operations-routes.j
 import { registerCityGovernanceRoutes } from "./city-governance-routes.js";
 import { registerComplianceRoutes } from "./compliance-routes.js";
 import { registerCityRoutes } from "./city-routes.js";
+import { registerEconomyAdminRoutes } from "./economy-admin-routes.js";
 import { snapshot, verticalSlice } from "./economy.js";
 import { registerGameplayRoutes } from "./gameplay-routes.js";
 import { registerMunicipalOperationsRoutes } from "./municipal-operations-routes.js";
@@ -123,6 +124,7 @@ await registerBusinessOperationsRoutes(app);
 await registerRegionalBusinessManagementRoutes(app);
 await registerCityGovernanceRoutes(app);
 await registerMunicipalOperationsRoutes(app);
+await registerEconomyAdminRoutes(app);
 
 function idempotencyKey(request: FastifyRequest): string {
   const key = request.headers["idempotency-key"];
@@ -182,6 +184,7 @@ app.get("/health", async () => ({
   liveCity: "one-time-tickets-presence-notifications",
   observability: "liveness-readiness-prometheus-request-id",
   economyIntegrity: "mfa-privacy-antifraud-limits-circuit-breakers",
+  economyAdministration: "snapshots-reconciliation-anomalies-manual-compute",
   releaseCandidate: "verified-email-beta-invites-transactional-delivery-release-gates",
   signature: "Tehkné Solutions"
 }));
