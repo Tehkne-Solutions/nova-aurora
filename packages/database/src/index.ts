@@ -168,6 +168,19 @@ export {
   type ExperimentReportView
 } from "./beta-decision-center.js";
 export {
+  EconomySnapshotService,
+  type EconomyScopeType,
+  type EconomySnapshotView
+} from "./economy-snapshots.js";
+export {
+  calculateInflationRate,
+  calculateMoneyVelocity,
+  deriveSnapshotMetrics,
+  reconcileMoneySupply,
+  type EconomySnapshotMetrics,
+  type MonetaryReconciliation
+} from "./economy-simulation-rules.js";
+export {
   EconomyIntegrityService,
   evaluateMarketOrderIntegrity,
   recordTradeSurveillance,

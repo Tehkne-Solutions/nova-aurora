@@ -8,6 +8,7 @@ import {
   BetaTelemetryService,
   closeDb,
   db,
+  EconomySnapshotService,
   MarketProductionService,
   PrivacyComplianceService,
   TransactionalEmailService
@@ -72,6 +73,7 @@ async function within<T>(promise: Promise<T>,timeoutMs: number): Promise<T> {
 }
 
 const economy = new MarketProductionService();
+const economySnapshots = new EconomySnapshotService();
 const privacy = new PrivacyComplianceService();
 const transactionalEmail = new TransactionalEmailService();
 const betaTelemetry = new BetaTelemetryService();
@@ -80,9 +82,11 @@ const betaExperimentAggregation = new BetaExperimentAggregationService();
 const redisUrl = process.env.REDIS_URL ?? "redis://localhost:6379";
 const publisher = new Redis(redisUrl,{ maxRetriesPerRequest: null });
 const sweepSeconds = Number(process.env.ECONOMY_TICK_SECONDS ?? 30);
+const snapshotToleranceMinor = Math.max(0,Math.trunc(Number(process.env.ECONOMY_SNAPSHOT_TOLERANCE_MINOR ?? 0)));
 const startedAt = Date.now();
 let lastTelemetryDate = "";
 let lastExperimentDate = "";
+let lastEconomySnapshotDate = "";
 
 const metrics = {
   ticks: 0,failedTicks: 0,completedProduction: 0,publishedEvents: 0,
@@ -90,7 +94,9 @@ const metrics = {
   emailsSent: 0,emailsFailed: 0,emailsDead: 0,
   telemetryWavesComputed: 0,announcementsPublished: 0,
   supportGateReconciliations: 0,experimentVariantsComputed: 0,
-  lastTickTimestamp: 0,postgresReady: false,redisReady: false
+  economySnapshotsComputed: 0,economySnapshotDivergences: 0,
+  lastEconomySnapshotTimestamp: 0,lastTickTimestamp: 0,
+  postgresReady: false,redisReady: false
 };
 
 async function publishOutbox(): Promise<number> {
@@ -137,12 +143,24 @@ productionWorker.on("error",(error) => {
 async function tick(): Promise<void> {
   const started = Date.now();
   const completedProduction = await sweepDueProduction();
+  const completedDate = new Date(Date.now()-86_400_000).toISOString().slice(0,10);
+  const economySnapshot = completedDate === lastEconomySnapshotDate
+    ? null
+    : await economySnapshots.computePlatformDailySnapshot(
+        new Date(`${completedDate}T00:00:00.000Z`),
+        snapshotToleranceMinor
+      );
+  if (economySnapshot) {
+    lastEconomySnapshotDate = completedDate;
+    metrics.economySnapshotsComputed += 1;
+    metrics.lastEconomySnapshotTimestamp = Date.parse(economySnapshot.computedAt);
+    if (economySnapshot.status === "divergent") metrics.economySnapshotDivergences += 1;
+  }
   const publishedEvents = await publishOutbox();
   const processedDeletions = await privacy.processDueDeletions(25);
   const emailDelivery = await transactionalEmail.processDue(50);
   const announcementsPublished = await betaTelemetry.processScheduledAnnouncements();
   await betaSupportRollouts.syncGates();
-  const completedDate = new Date(Date.now()-86_400_000).toISOString().slice(0,10);
   const telemetryWavesComputed = completedDate === lastTelemetryDate
     ? 0
     : await betaTelemetry.recomputeDailyMetrics(
@@ -172,6 +190,10 @@ async function tick(): Promise<void> {
   log("info","world.tick.completed",{
     completedProduction,publishedEvents,processedDeletions,emailDelivery,
     announcementsPublished,telemetryWavesComputed,experimentVariantsComputed,
+    economySnapshot: economySnapshot ? {
+      id: economySnapshot.id,status: economySnapshot.status,
+      windowStart: economySnapshot.windowStart,windowEnd: economySnapshot.windowEnd
+    } : null,
     supportGatesReconciled: true,durationMs: Date.now()-started
   });
 }
@@ -232,6 +254,15 @@ function renderMetrics(): string {
     "# HELP nova_aurora_experiment_variants_computed_total Experiment variant results computed.",
     "# TYPE nova_aurora_experiment_variants_computed_total counter",
     `nova_aurora_experiment_variants_computed_total ${metrics.experimentVariantsComputed}`,
+    "# HELP nova_aurora_economy_snapshots_total Daily economy snapshots computed by the worker.",
+    "# TYPE nova_aurora_economy_snapshots_total counter",
+    `nova_aurora_economy_snapshots_total ${metrics.economySnapshotsComputed}`,
+    "# HELP nova_aurora_economy_snapshot_divergences_total Economy snapshots with ledger divergence.",
+    "# TYPE nova_aurora_economy_snapshot_divergences_total counter",
+    `nova_aurora_economy_snapshot_divergences_total ${metrics.economySnapshotDivergences}`,
+    "# HELP nova_aurora_economy_snapshot_last_timestamp_seconds Last computed economy snapshot.",
+    "# TYPE nova_aurora_economy_snapshot_last_timestamp_seconds gauge",
+    `nova_aurora_economy_snapshot_last_timestamp_seconds ${metrics.lastEconomySnapshotTimestamp/1000}`,
     "# HELP nova_aurora_worker_last_tick_timestamp_seconds Last successful tick.",
     "# TYPE nova_aurora_worker_last_tick_timestamp_seconds gauge",
     `nova_aurora_worker_last_tick_timestamp_seconds ${metrics.lastTickTimestamp/1000}`,
