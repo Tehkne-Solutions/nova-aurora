@@ -21,7 +21,7 @@ export type EconomyReconciliationView=Readonly<{
 export type EconomyAnomalyView=Readonly<{
   id:string;snapshotId:string;anomalyKey:string;severity:"info"|"warning"|"critical";
   metricKey:string;observedValue:number|null;expectedMin:number|null;expectedMax:number|null;
-  evidence:unknown;detectedAt:string;resolvedAt:string|null;
+  evidence:unknown;detectedAt:string;resolvedAt:string|null;resolvedBy:string|null;resolutionReason:string|null;
 }>;
 export type EconomyAnomalyFilters=Readonly<{
   code?:EconomyAlertCode|undefined;severity?:EconomyAlertSeverity|undefined;resolved?:boolean|undefined;snapshotId?:string|undefined;
@@ -103,6 +103,21 @@ export class EconomySnapshotService extends EconomyRepositoryBase {
     return rows.map((row)=>this.mapAnomaly(row));
   }
 
+  async resolveAnomaly(anomalyId:string,resolvedBy:string,reason:string):Promise<EconomyAnomalyView>{
+    const normalizedReason=reason.trim();
+    if(normalizedReason.length<10)throw new Error("A justificativa deve ter pelo menos 10 caracteres.");
+    return this.sql.begin("isolation level serializable",async(tx)=>{
+      const rows=await tx`SELECT * FROM economy_snapshot_anomalies WHERE id=${anomalyId}::uuid FOR UPDATE`;
+      const current=rows[0];
+      if(!current)throw new Error("Anomalia econômica não encontrada.");
+      if(current.resolved_at)return this.mapAnomaly(current);
+      const updated=await tx`UPDATE economy_snapshot_anomalies SET resolved_at=now(),resolved_by=${resolvedBy}::uuid,resolution_reason=${normalizedReason} WHERE id=${anomalyId}::uuid AND resolved_at IS NULL RETURNING *`;
+      const row=updated[0];if(!row)throw new Error("Anomalia econômica não resolvida.");
+      await this.outbox(tx,String(row.snapshot_id),"economy.snapshot.anomaly_resolved",{anomalyId:String(row.id),snapshotId:String(row.snapshot_id),anomalyKey:String(row.anomaly_key),severity:String(row.severity),resolvedBy,reason:normalizedReason});
+      return this.mapAnomaly(row);
+    });
+  }
+
   async detail(snapshotId:string):Promise<Readonly<{snapshot:EconomySnapshotView;reconciliation:EconomyReconciliationView|null;anomalies:readonly EconomyAnomalyView[]}>>{
     const snapshots=await this.sql`SELECT * FROM economy_snapshots WHERE id=${snapshotId}::uuid`;
     if(!snapshots[0])throw new Error("Snapshot econômico não encontrado.");
@@ -124,5 +139,5 @@ export class EconomySnapshotService extends EconomyRepositoryBase {
 
   private map(row:Record<string,unknown>):EconomySnapshotView{return{id:String(row.id),scopeType:String(row.scope_type) as EconomyScopeType,scopeId:row.scope_id===null?null:String(row.scope_id),windowStart:iso(row.window_start),windowEnd:iso(row.window_end),status:String(row.status) as EconomySnapshotView["status"],ledgerCutoff:iso(row.ledger_cutoff),moneySupplyMinor:Number(row.money_supply_minor),transactionVolumeMinor:Number(row.transaction_volume_minor),moneyVelocity:Number(row.money_velocity),priceIndex:nullableNumber(row.price_index),inflationRatePercent:nullableNumber(row.inflation_rate_percent),production:row.production,consumption:row.consumption,employmentRatePercent:nullableNumber(row.employment_rate_percent),wealthConcentrationPercent:nullableNumber(row.wealth_concentration_percent),fiscalBalanceMinor:Number(row.fiscal_balance_minor),indicators:row.indicators,assumptions:row.assumptions,sourceHash:String(row.source_hash),computedAt:iso(row.computed_at),reconciledAt:row.reconciled_at?iso(row.reconciled_at):null};}
   private mapReconciliation(row:Record<string,unknown>):EconomyReconciliationView{return{id:String(row.id),snapshotId:String(row.snapshot_id),ledgerTotalMinor:Number(row.ledger_total_minor),snapshotTotalMinor:Number(row.snapshot_total_minor),differenceMinor:Number(row.difference_minor),toleranceMinor:Number(row.tolerance_minor),isBalanced:Boolean(row.is_balanced),evidence:row.evidence,reconciledAt:iso(row.reconciled_at)};}
-  private mapAnomaly(row:Record<string,unknown>):EconomyAnomalyView{return{id:String(row.id),snapshotId:String(row.snapshot_id),anomalyKey:String(row.anomaly_key),severity:String(row.severity) as EconomyAnomalyView["severity"],metricKey:String(row.metric_key),observedValue:nullableNumber(row.observed_value),expectedMin:nullableNumber(row.expected_min),expectedMax:nullableNumber(row.expected_max),evidence:row.evidence,detectedAt:iso(row.detected_at),resolvedAt:row.resolved_at?iso(row.resolved_at):null};}
+  private mapAnomaly(row:Record<string,unknown>):EconomyAnomalyView{return{id:String(row.id),snapshotId:String(row.snapshot_id),anomalyKey:String(row.anomaly_key),severity:String(row.severity) as EconomyAnomalyView["severity"],metricKey:String(row.metric_key),observedValue:nullableNumber(row.observed_value),expectedMin:nullableNumber(row.expected_min),expectedMax:nullableNumber(row.expected_max),evidence:row.evidence,detectedAt:iso(row.detected_at),resolvedAt:row.resolved_at?iso(row.resolved_at):null,resolvedBy:row.resolved_by?String(row.resolved_by):null,resolutionReason:row.resolution_reason?String(row.resolution_reason):null};}
 }
