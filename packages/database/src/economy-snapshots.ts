@@ -24,8 +24,8 @@ export type EconomyAnomalyView=Readonly<{
   evidence:unknown;detectedAt:string;resolvedAt:string|null;
 }>;
 export type EconomyAnomalyFilters=Readonly<{
-  code?:EconomyAlertCode;severity?:EconomyAlertSeverity;resolved?:boolean;snapshotId?:string;
-  limit?:number;offset?:number;
+  code?:EconomyAlertCode|undefined;severity?:EconomyAlertSeverity|undefined;resolved?:boolean|undefined;snapshotId?:string|undefined;
+  limit?:number|undefined;offset?:number|undefined;
 }>;
 export type EconomyAdminState=Readonly<{
   latest:EconomySnapshotView|null;snapshotCount:number;divergentCount:number;
