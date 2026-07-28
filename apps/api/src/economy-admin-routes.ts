@@ -11,6 +11,7 @@ const anomalyQuery=historyQuery.extend({
   resolved:z.enum(["true","false"]).transform((value)=>value==="true").optional(),
   snapshotId:z.string().uuid().optional()
 });
+const resolveSchema=z.object({reason:z.string().trim().min(10).max(1000)});
 const computeSchema=z.object({day:z.coerce.date().optional(),toleranceMinor:z.number().int().min(0).max(Number.MAX_SAFE_INTEGER).default(0)});
 
 export async function registerEconomyAdminRoutes(app:FastifyInstance):Promise<void>{
@@ -29,6 +30,13 @@ export async function registerEconomyAdminRoutes(app:FastifyInstance):Promise<vo
     await requireRole(app,request,["platform-admin","municipal-admin"]);
     const query=anomalyQuery.parse(request.query);
     return {anomalies:await economySnapshots.listAnomalies(query),filters:query,signature:"Tehkné Solutions"};
+  });
+
+  app.patch<{Params:{anomalyId:string}}>("/v1/admin/economy/anomalies/:anomalyId/resolve",async(request)=>{
+    const identity=await requireRole(app,request,["platform-admin"]);
+    const anomalyId=z.string().uuid().parse(request.params.anomalyId);
+    const body=resolveSchema.parse(request.body);
+    return {anomaly:await economySnapshots.resolveAnomaly(anomalyId,identity.userId,body.reason),signature:"Tehkné Solutions"};
   });
 
   app.get<{Params:{snapshotId:string}}>("/v1/admin/economy/snapshots/:snapshotId",async(request)=>{
