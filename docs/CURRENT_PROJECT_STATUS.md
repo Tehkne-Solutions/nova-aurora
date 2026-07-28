@@ -4,55 +4,52 @@ Atualizado em 27 de julho de 2026.
 
 ## Marco consolidado na `main`
 
-A `main` contém as entregas até a **Sprint 17 — Operações de Moderação e Ativação Controlada do Beta**.
+A `main` contém as entregas até a **Sprint 19 — Suporte Operacional e Rollouts por Feature Flag**.
 
 O vertical slice consolidado cobre:
 
-`identidade verificada → beta controlado → cidade → trabalho → produção → empresa → mercado protegido → governança → compliance → ledger`
+`identidade verificada → beta controlado → cidade → trabalho → produção → empresa → mercado protegido → governança → compliance → ledger → telemetria → comunidade → suporte → rollout gradual`
 
-## Etapa em conclusão
+## Sprint 20 pronta para merge
 
-A **Sprint 18 — Telemetria do Beta e Operações de Comunidade** está concentrada no PR canônico da versão `0.18.0`.
+A **Sprint 20 — Experimentação, Análise de Coortes e LiveOps**, versão-alvo `0.20.0`, está implementada no PR #22 e validada pelo CI.
 
-Entregas principais:
+A entrega adiciona:
 
-- telemetria persistente vinculada ao usuário e à onda;
-- agregados diários de sessões, atividade, conversão, erro e retenção D1/D7;
-- health score com decisão assistida `expand`, `hold` ou `reduce`;
-- proteção contra decisão prematura enquanto as coortes de retenção não amadurecem;
-- preservação de evidências em ondas pausadas e revertidas;
-- feedback estruturado, priorizado e cifrado em repouso;
-- anúncios gerais, do beta e de onda, imediatos ou agendados;
-- eventos em tempo real também para publicações agendadas;
-- central administrativa de aprendizado do beta;
-- gate operacional de prontidão comunitária;
-- validação integral por migrations, tipagem, testes, build, navegador, acessibilidade, carga, imagens de produção e backup/restauração.
+- experimentos vinculados a feature flags;
+- coortes e resultados por variante;
+- conversão, retenção D1/D7, erro, sessão, feedback, suporte e estabilidade econômica;
+- guardrails operacionais;
+- recomendações `expand`, `hold`, `reduce` ou `stop`;
+- duas aprovações independentes para início;
+- worker de agregação e reconciliação;
+- calendário e timeline LiveOps;
+- Decision Center com fila de revisão;
+- decisão humana auditável, incluindo `reject`;
+- relatórios finais persistentes com hash SHA-256;
+- base histórica de aprendizado;
+- painel `/experiments-liveops`;
+- integração em `/v1/release/state`;
+- gate `beta-experimentation-ready`.
 
-## Correções de revisão incorporadas
+O ciclo operacional passa a ser:
 
-- eventos ocorridos durante pausas permanecem associados à onda correta;
-- ondas revertidas continuam disponíveis para recomputação e relatórios de incidente;
-- métricas históricas desconsideram ativações futuras;
-- o worker agrega o último dia UTC concluído;
-- amostras sem maturidade D1/D7 permanecem em `hold`;
-- anúncios do beta exigem participação válida;
-- anúncios vencidos chegam ao estado terminal correto;
-- publicações agendadas emitem o mesmo evento de outbox das publicações manuais;
-- o gate comunitário é reconciliado em todas as passagens do worker;
-- administradores municipais mantêm leitura, sem receber ações exclusivas da administração da plataforma.
+`exposição → coorte → medição → guardrail → recomendação → decisão humana → operação LiveOps → relatório final → aprendizado reutilizável`
+
+Detalhes completos: `docs/SPRINT_20_EXPERIMENTATION_COHORTS_LIVEOPS.md`.
 
 ## Próxima etapa recomendada
 
-A **Sprint 19 — Suporte Operacional e Rollouts por Feature Flag** deve construir sobre a telemetria consolidada, sem duplicar a Sprint 18.
+Após o merge do PR #22, iniciar a **Sprint 21 — Economia Viva e Simulação Sistêmica**, priorizando:
 
-Escopo recomendado:
-
-1. tickets de suporte com SLA, prioridade, responsáveis e histórico visível ao usuário;
-2. classificação e encaminhamento operacional do feedback recebido;
-3. feature flags auditáveis, com aprovação independente, exposição estável e pausa segura;
-4. retenção automática dos eventos de produto;
-5. gates de release para cobertura de suporte e segurança de rollout;
-6. integração das decisões de rollout com os relatórios de aprendizado da Sprint 18.
+1. indicadores econômicos globais e regionais;
+2. oferta e demanda por categoria;
+3. cadeias produtivas e gargalos;
+4. agentes NPC produtores e consumidores;
+5. inflação, deflação e estabilidade de preços;
+6. eventos macroeconômicos e respostas administrativas;
+7. observabilidade e guardrails econômicos;
+8. integração dos experimentos da Sprint 20 com intervenções econômicas controladas.
 
 ## Regra de produto
 

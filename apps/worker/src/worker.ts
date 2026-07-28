@@ -3,6 +3,7 @@ import { createServer,type IncomingMessage,type ServerResponse } from "node:http
 import { Worker } from "bullmq";
 import { Redis } from "ioredis";
 import {
+  BetaExperimentAggregationService,
   BetaSupportRolloutService,
   BetaTelemetryService,
   closeDb,
@@ -75,18 +76,20 @@ const privacy = new PrivacyComplianceService();
 const transactionalEmail = new TransactionalEmailService();
 const betaTelemetry = new BetaTelemetryService();
 const betaSupportRollouts = new BetaSupportRolloutService();
+const betaExperimentAggregation = new BetaExperimentAggregationService();
 const redisUrl = process.env.REDIS_URL ?? "redis://localhost:6379";
 const publisher = new Redis(redisUrl,{ maxRetriesPerRequest: null });
 const sweepSeconds = Number(process.env.ECONOMY_TICK_SECONDS ?? 30);
 const startedAt = Date.now();
 let lastTelemetryDate = "";
+let lastExperimentDate = "";
 
 const metrics = {
   ticks: 0,failedTicks: 0,completedProduction: 0,publishedEvents: 0,
   completedJobs: 0,failedJobs: 0,processedDeletions: 0,
   emailsSent: 0,emailsFailed: 0,emailsDead: 0,
   telemetryWavesComputed: 0,announcementsPublished: 0,
-  supportGateReconciliations: 0,
+  supportGateReconciliations: 0,experimentVariantsComputed: 0,
   lastTickTimestamp: 0,postgresReady: false,redisReady: false
 };
 
@@ -147,6 +150,12 @@ async function tick(): Promise<void> {
         new Date(`${completedDate}T00:00:00.000Z`)
       );
   if (telemetryWavesComputed >= 0) lastTelemetryDate = completedDate;
+  const experimentVariantsComputed = completedDate === lastExperimentDate
+    ? 0
+    : await betaExperimentAggregation.recomputeRunningExperiments(
+        new Date(`${completedDate}T00:00:00.000Z`)
+      );
+  if (experimentVariantsComputed >= 0) lastExperimentDate = completedDate;
 
   metrics.ticks += 1;
   metrics.completedProduction += completedProduction;
@@ -158,11 +167,12 @@ async function tick(): Promise<void> {
   metrics.announcementsPublished += announcementsPublished;
   metrics.telemetryWavesComputed += telemetryWavesComputed;
   metrics.supportGateReconciliations += 1;
+  metrics.experimentVariantsComputed += experimentVariantsComputed;
   metrics.lastTickTimestamp = Date.now();
   log("info","world.tick.completed",{
     completedProduction,publishedEvents,processedDeletions,emailDelivery,
-    announcementsPublished,telemetryWavesComputed,supportGatesReconciled: true,
-    durationMs: Date.now()-started
+    announcementsPublished,telemetryWavesComputed,experimentVariantsComputed,
+    supportGatesReconciled: true,durationMs: Date.now()-started
   });
 }
 
@@ -219,6 +229,9 @@ function renderMetrics(): string {
     "# HELP nova_aurora_support_gate_reconciliations_total Support and rollout gate reconciliations.",
     "# TYPE nova_aurora_support_gate_reconciliations_total counter",
     `nova_aurora_support_gate_reconciliations_total ${metrics.supportGateReconciliations}`,
+    "# HELP nova_aurora_experiment_variants_computed_total Experiment variant results computed.",
+    "# TYPE nova_aurora_experiment_variants_computed_total counter",
+    `nova_aurora_experiment_variants_computed_total ${metrics.experimentVariantsComputed}`,
     "# HELP nova_aurora_worker_last_tick_timestamp_seconds Last successful tick.",
     "# TYPE nova_aurora_worker_last_tick_timestamp_seconds gauge",
     `nova_aurora_worker_last_tick_timestamp_seconds ${metrics.lastTickTimestamp/1000}`,

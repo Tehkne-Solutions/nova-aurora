@@ -139,6 +139,35 @@ export {
   type SupportTicketStatus
 } from "./beta-support-rollout-rules.js";
 export {
+  BetaExperimentService,
+  type ExperimentResultView,
+  type ExperimentStatus,
+  type ExperimentView
+} from "./beta-experiments.js";
+export { BetaExperimentAggregationService } from "./beta-experiment-aggregation.js";
+export {
+  evaluateExperiment,
+  type ExperimentEvaluation,
+  type ExperimentGuardrails,
+  type ExperimentPrimaryMetric,
+  type ExperimentRecommendation,
+  type ExperimentVariantMetrics
+} from "./beta-experiment-rules.js";
+export {
+  BetaLiveOpsService,
+  type ExperimentTimelineEntry,
+  type LiveOpsEventType,
+  type LiveOpsEventView,
+  type LiveOpsSeverity,
+  type LiveOpsStatus
+} from "./beta-liveops.js";
+export {
+  BetaDecisionCenterService,
+  type DecisionAction,
+  type DecisionQueueItem,
+  type ExperimentReportView
+} from "./beta-decision-center.js";
+export {
   EconomyIntegrityService,
   evaluateMarketOrderIntegrity,
   recordTradeSurveillance,
