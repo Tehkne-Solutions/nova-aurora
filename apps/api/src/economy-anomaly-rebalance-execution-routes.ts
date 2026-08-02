@@ -3,11 +3,13 @@ import type { FastifyInstance,FastifyRequest } from "fastify";
 import { z } from "zod";
 import { db } from "@nova-aurora/database";
 import { requireRole } from "./auth-context.js";
+import { registerEconomyAnomalyRebalanceApprovalRoutes,validateRebalanceApproval } from "./economy-anomaly-rebalance-approval-routes.js";
 
 const economySql=db();
 const executionSchema=z.object({
   recommendation:z.enum(["assign_owner","rebalance_owner","assign_or_escalate","escalate_capacity"]),
   nextOwnerId:z.string().uuid().nullable().optional(),
+  approvalId:z.string().uuid().nullable().optional(),
   reason:z.string().trim().min(10).max(1000)
 });
 
@@ -18,6 +20,8 @@ function idempotencyKey(request:FastifyRequest):string{
 }
 
 export async function registerEconomyAnomalyRebalanceExecutionRoutes(app:FastifyInstance):Promise<void>{
+  await registerEconomyAnomalyRebalanceApprovalRoutes(app);
+
   app.post<{Params:{anomalyId:string}}>("/v1/admin/economy/anomalies/:anomalyId/rebalance-execute",async(request)=>{
     const identity=await requireRole(app,request,["platform-admin"]);
     const anomalyId=z.string().uuid().parse(request.params.anomalyId);
@@ -40,6 +44,15 @@ export async function registerEconomyAnomalyRebalanceExecutionRoutes(app:Fastify
       if(body.recommendation!=="escalate_capacity"&&!nextOwner)throw app.httpErrors.badRequest("nextOwnerId é obrigatório para esta recomendação.");
       if(body.recommendation==="escalate_capacity"&&nextOwner)throw app.httpErrors.badRequest("nextOwnerId deve ser omitido em escalonamento de capacidade.");
 
+      const approval=await validateRebalanceApproval(tx,{
+        approvalId:body.approvalId??null,
+        anomalyId,
+        recommendation:body.recommendation,
+        nextOwnerId:nextOwner,
+        severity:String(current.severity),
+        actorUserId:identity.userId
+      });
+
       let updated=current;
       if(nextOwner&&nextOwner!==previousOwner){
         updated=(await tx`UPDATE economy_snapshot_anomalies SET assigned_to=${nextOwner}::uuid,assigned_at=now(),assigned_by=${identity.userId}::uuid WHERE id=${anomalyId}::uuid RETURNING *`)[0]??current;
@@ -49,6 +62,9 @@ export async function registerEconomyAnomalyRebalanceExecutionRoutes(app:Fastify
 
       const executionId=randomUUID();
       const execution=(await tx`INSERT INTO economy_anomaly_rebalance_executions(id,anomaly_id,previous_owner_id,next_owner_id,recommendation,actor_user_id,reason,idempotency_key) VALUES(${executionId}::uuid,${anomalyId}::uuid,${previousOwner}::uuid,${nextOwner}::uuid,${body.recommendation},${identity.userId}::uuid,${body.reason},${key}) RETURNING *`)[0];
+      if(approval){
+        await tx`UPDATE economy_anomaly_rebalance_approvals SET status='consumed',consumed_at=now() WHERE id=${String(approval.id)}::uuid`;
+      }
       return {execution,anomaly:updated};
     });
 
