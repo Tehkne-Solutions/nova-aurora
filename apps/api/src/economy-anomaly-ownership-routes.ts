@@ -5,6 +5,7 @@ import { db } from "@nova-aurora/database";
 import { requireRole } from "./auth-context.js";
 import { registerEconomyAnomalyOperationsDashboardRoutes } from "./economy-anomaly-operations-dashboard-routes.js";
 import { registerEconomyAnomalyOwnerWorkloadRoutes } from "./economy-anomaly-owner-workload-routes.js";
+import { registerEconomyAnomalyRebalancingRoutes } from "./economy-anomaly-rebalancing-routes.js";
 
 const economySql=db();
 const historyQuery=z.object({limit:z.coerce.number().int().min(1).max(200).default(30),offset:z.coerce.number().int().min(0).default(0)});
@@ -25,6 +26,7 @@ function ownershipView(row:Record<string,unknown>){
 export async function registerEconomyAnomalyOwnershipRoutes(app:FastifyInstance):Promise<void>{
   await registerEconomyAnomalyOperationsDashboardRoutes(app);
   await registerEconomyAnomalyOwnerWorkloadRoutes(app);
+  await registerEconomyAnomalyRebalancingRoutes(app);
 
   app.get<{Params:{anomalyId:string}}>('/v1/admin/economy/anomalies/:anomalyId/ownership',async(request)=>{
     await requireRole(app,request,['platform-admin','municipal-admin']);
