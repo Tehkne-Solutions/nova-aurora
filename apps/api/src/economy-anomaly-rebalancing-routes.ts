@@ -2,6 +2,7 @@ import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { db } from "@nova-aurora/database";
 import { requireRole } from "./auth-context.js";
+import { registerEconomyAnomalyRebalanceExecutionRoutes } from "./economy-anomaly-rebalance-execution-routes.js";
 
 const economySql=db();
 const querySchema=z.object({
@@ -12,6 +13,8 @@ const querySchema=z.object({
 function n(value:unknown):number{return Number(value??0);}
 
 export async function registerEconomyAnomalyRebalancingRoutes(app:FastifyInstance):Promise<void>{
+  await registerEconomyAnomalyRebalanceExecutionRoutes(app);
+
   app.get('/v1/admin/economy/anomalies/rebalance-recommendations',async(request)=>{
     await requireRole(app,request,['platform-admin','municipal-admin']);
     const query=querySchema.parse(request.query);
