@@ -7,6 +7,7 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
 
 type BlueprintCategory = "decor" | "furniture" | "wearable" | "art" | "collectible" | "architecture" | "vehicle" | "component";
 type BlueprintStatus = "draft" | "published" | "retired" | "rejected";
+type ManifestRegistryStatus = "declared" | "revoked" | null;
 type Scarcity = "open" | "limited" | "unique";
 type TokenizationStatus = "disabled" | "eligible" | "anchored";
 
@@ -21,6 +22,10 @@ type Blueprint = Readonly<{
   royalty_bps: number | string;
   status: BlueprintStatus;
   tokenization_status: TokenizationStatus;
+  asset_manifest_registry_id: string | null;
+  manifest_registry_status: ManifestRegistryStatus;
+  manifest_registry_uri: string | null;
+  manifest_registry_sha256: string | null;
   created_at: string;
   updated_at: string;
 }>;
@@ -44,6 +49,7 @@ type Edition = Readonly<{
   royalty_bps: number | string;
   asset_manifest_uri: string;
   content_hash: string;
+  asset_manifest_registry_id: string | null;
 }>;
 
 type Sale = Readonly<{
@@ -126,6 +132,19 @@ async function api<T>(path: string, init?: RequestInit): Promise<T> {
   return response.json() as Promise<T>;
 }
 
+function validHttpsManifestUri(value: string): boolean {
+  try {
+    const url = new URL(value.trim());
+    return url.protocol === "https:" && !url.username && !url.password;
+  } catch {
+    return false;
+  }
+}
+
+function validSha256(value: string): boolean {
+  return /^[0-9a-fA-F]{64}$/.test(value.trim());
+}
+
 function dateTime(value: string | null | undefined): string {
   if (!value) return "—";
   return new Intl.DateTimeFormat("pt-BR", { dateStyle: "short", timeStyle: "short" }).format(new Date(value));
@@ -136,6 +155,12 @@ function blueprintStatus(status: BlueprintStatus): string {
   if (status === "published") return "Publicado";
   if (status === "retired") return "Aposentado";
   return "Rejeitado pela moderação";
+}
+
+function integrityLabel(blueprint: Blueprint): string {
+  if (blueprint.asset_manifest_registry_id && blueprint.manifest_registry_status === "declared") return "Integridade declarada";
+  if (blueprint.manifest_registry_status === "revoked") return "Declaração revogada";
+  return "Legado sem declaração";
 }
 
 function supplyLabel(edition: Edition): string {
@@ -165,7 +190,7 @@ export function UgcCreatorStudio() {
     setError(null);
     try {
       const [blueprintResult, editionResult, salesResult] = await Promise.all([
-        api<{ blueprints: Blueprint[] }>("/v1/ugc/blueprints/me?limit=100"),
+        api<{ blueprints: Blueprint[] }>("/v1/ugc/studio/blueprints/me?limit=100"),
         api<{ editions: Edition[] }>("/v1/ugc/studio/editions/me?limit=100"),
         api<{ sales: Sale[] }>("/v1/ugc/studio/sales/me?limit=100")
       ]);
@@ -173,9 +198,7 @@ export function UgcCreatorStudio() {
       setEditions(editionResult.editions);
       setSales(salesResult.sales);
       const firstPublished = blueprintResult.blueprints.find((blueprint) => blueprint.status === "published")?.id ?? "";
-      setEditionDraft((current) => current.blueprintId
-        ? current
-        : { ...current, blueprintId: firstPublished });
+      setEditionDraft((current) => current.blueprintId ? current : { ...current, blueprintId: firstPublished });
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : "Não foi possível carregar o UGC Creator Studio.");
     } finally {
@@ -207,7 +230,7 @@ export function UgcCreatorStudio() {
       category: blueprintDraft.category,
       version: Number(blueprintDraft.version),
       assetManifestUri: blueprintDraft.assetManifestUri.trim(),
-      contentHash: blueprintDraft.contentHash.trim(),
+      contentHash: blueprintDraft.contentHash.trim().toLowerCase(),
       royaltyBps: Number(blueprintDraft.royaltyBps),
       tokenizationStatus: blueprintDraft.tokenizationStatus
     };
@@ -215,13 +238,13 @@ export function UgcCreatorStudio() {
 
   async function createBlueprint() {
     await run(async () => {
-      await api("/v1/ugc/blueprints", {
+      await api("/v1/ugc/studio/blueprints", {
         method: "POST",
-        body: JSON.stringify({ ...blueprintPayload(), publish: false })
+        body: JSON.stringify(blueprintPayload())
       });
       setBlueprintDraft(blankBlueprint());
       await loadStudio();
-    }, "Blueprint salvo como rascunho.");
+    }, "Blueprint salvo como rascunho com declaração HTTPS + SHA-256 registrada.");
   }
 
   async function saveBlueprintEdit() {
@@ -234,7 +257,7 @@ export function UgcCreatorStudio() {
       setEditingBlueprintId(null);
       setBlueprintDraft(blankBlueprint());
       await loadStudio();
-    }, "Blueprint atualizado antes da publicação.");
+    }, "Blueprint atualizado e declaração de integridade reconciliada.");
   }
 
   function beginBlueprintEdit(blueprint: Blueprint) {
@@ -260,7 +283,9 @@ export function UgcCreatorStudio() {
       await api(`/v1/ugc/blueprints/${blueprint.id}/${action}`, { method: "POST" });
       if (editingBlueprintId === blueprint.id) cancelBlueprintEdit();
       await loadStudio();
-    }, action === "publish" ? "Blueprint publicado e pronto para edições." : "Blueprint aposentado. Edições já emitidas preservam proveniência e regras comerciais.");
+    }, action === "publish"
+      ? "Blueprint publicado com declaração de integridade ativa."
+      : "Blueprint aposentado. Edições já emitidas preservam proveniência e regras comerciais.");
   }
 
   async function createEdition() {
@@ -289,8 +314,8 @@ export function UgcCreatorStudio() {
   const blueprintReady = Boolean(
     blueprintDraft.name.trim()
       && Number(blueprintDraft.version) > 0
-      && blueprintDraft.assetManifestUri.trim()
-      && blueprintDraft.contentHash.trim().length >= 16
+      && validHttpsManifestUri(blueprintDraft.assetManifestUri)
+      && validSha256(blueprintDraft.contentHash)
       && Number(blueprintDraft.royaltyBps) >= 0
       && Number(blueprintDraft.royaltyBps) <= 5000
   );
@@ -308,7 +333,7 @@ export function UgcCreatorStudio() {
       <div className={styles.sectionHeader}>
         <div>
           <h3 id="ugc-studio-inner-title">UGC Creator Studio</h3>
-          <p>Modele blueprints versionados, publique o manifesto e abra edições comerciais com escassez e royalties definidos.</p>
+          <p>Modele blueprints versionados, declare o manifesto por HTTPS + SHA-256 e abra edições comerciais com proveniência persistente.</p>
         </div>
         <button className={styles.buttonQuiet} type="button" disabled={busy} onClick={() => void loadStudio()}>Atualizar</button>
       </div>
@@ -322,23 +347,54 @@ export function UgcCreatorStudio() {
           <div className={styles.formRow}>
             <label htmlFor="ugc-blueprint-name">Nome</label>
             <input id="ugc-blueprint-name" className={styles.input} maxLength={160} value={blueprintDraft.name} onChange={(event) => setBlueprintDraft((current) => ({ ...current, name: event.target.value }))} />
+
             <label htmlFor="ugc-blueprint-category">Categoria</label>
             <select id="ugc-blueprint-category" className={styles.select} value={blueprintDraft.category} onChange={(event) => setBlueprintDraft((current) => ({ ...current, category: event.target.value as BlueprintCategory }))}>
               {(["decor", "furniture", "wearable", "art", "collectible", "architecture", "vehicle", "component"] as BlueprintCategory[]).map((category) => <option value={category} key={category}>{category}</option>)}
             </select>
+
             <label htmlFor="ugc-blueprint-version">Versão</label>
             <input id="ugc-blueprint-version" className={styles.input} type="number" min="1" step="1" value={blueprintDraft.version} onChange={(event) => setBlueprintDraft((current) => ({ ...current, version: event.target.value }))} />
-            <label htmlFor="ugc-manifest-uri">URI do manifesto de assets</label>
-            <input id="ugc-manifest-uri" className={styles.input} maxLength={2000} value={blueprintDraft.assetManifestUri} placeholder="https://.../manifest.json" onChange={(event) => setBlueprintDraft((current) => ({ ...current, assetManifestUri: event.target.value }))} />
-            <label htmlFor="ugc-content-hash">Hash do conteúdo</label>
-            <input id="ugc-content-hash" className={styles.input} minLength={16} maxLength={256} value={blueprintDraft.contentHash} onChange={(event) => setBlueprintDraft((current) => ({ ...current, contentHash: event.target.value }))} />
+
+            <label htmlFor="ugc-manifest-uri">URI HTTPS do manifesto de assets</label>
+            <input
+              id="ugc-manifest-uri"
+              className={styles.input}
+              type="url"
+              inputMode="url"
+              maxLength={2000}
+              value={blueprintDraft.assetManifestUri}
+              placeholder="https://exemplo.com/objeto/manifest.json"
+              aria-describedby="ugc-manifest-help"
+              onChange={(event) => setBlueprintDraft((current) => ({ ...current, assetManifestUri: event.target.value }))}
+            />
+            <p id="ugc-manifest-help">Obrigatório HTTPS. URLs com usuário ou senha embutidos não são aceitas.</p>
+
+            <label htmlFor="ugc-content-hash">SHA-256 do manifesto/asset</label>
+            <input
+              id="ugc-content-hash"
+              className={styles.input}
+              minLength={64}
+              maxLength={64}
+              pattern="[0-9a-fA-F]{64}"
+              spellCheck={false}
+              autoCapitalize="none"
+              autoCorrect="off"
+              value={blueprintDraft.contentHash}
+              aria-describedby="ugc-hash-help"
+              onChange={(event) => setBlueprintDraft((current) => ({ ...current, contentHash: event.target.value.replace(/\s/g, "").toLowerCase() }))}
+            />
+            <p id="ugc-hash-help">Exatamente 64 caracteres hexadecimais. Este hash declara integridade; não significa que os bytes remotos já foram escaneados.</p>
+
             <label htmlFor="ugc-royalty">Royalty em basis points (0–5000)</label>
             <input id="ugc-royalty" className={styles.input} type="number" min="0" max="5000" step="1" value={blueprintDraft.royaltyBps} onChange={(event) => setBlueprintDraft((current) => ({ ...current, royaltyBps: event.target.value }))} />
+
             <label htmlFor="ugc-tokenization">Tokenização</label>
             <select id="ugc-tokenization" className={styles.select} value={blueprintDraft.tokenizationStatus} onChange={(event) => setBlueprintDraft((current) => ({ ...current, tokenizationStatus: event.target.value as "disabled" | "eligible" }))}>
               <option value="disabled">Desabilitada</option>
               <option value="eligible">Elegível para ancoragem futura</option>
             </select>
+
             <div className={styles.actions}>
               {editingBlueprintId ? (
                 <>
@@ -362,24 +418,30 @@ export function UgcCreatorStudio() {
               <select id="ugc-edition-blueprint" className={styles.select} value={editionDraft.blueprintId} onChange={(event) => setEditionDraft((current) => ({ ...current, blueprintId: event.target.value }))}>
                 {publishedBlueprints.map((blueprint) => <option value={blueprint.id} key={blueprint.id}>{blueprint.name} · v{blueprint.version}</option>)}
               </select>
+
               <label htmlFor="ugc-edition-name">Nome da edição</label>
               <input id="ugc-edition-name" className={styles.input} maxLength={120} value={editionDraft.editionName} onChange={(event) => setEditionDraft((current) => ({ ...current, editionName: event.target.value }))} />
+
               <label htmlFor="ugc-edition-scarcity">Escassez</label>
               <select id="ugc-edition-scarcity" className={styles.select} value={editionDraft.scarcity} onChange={(event) => setEditionDraft((current) => ({ ...current, scarcity: event.target.value as Scarcity, supplyCap: event.target.value === "unique" ? "1" : current.supplyCap }))}>
                 <option value="open">Oferta aberta</option>
                 <option value="limited">Limitada</option>
                 <option value="unique">Única</option>
               </select>
+
               {editionDraft.scarcity === "limited" ? (
                 <>
                   <label htmlFor="ugc-edition-supply">Supply cap</label>
                   <input id="ugc-edition-supply" className={styles.input} type="number" min="1" max="1000000" step="1" value={editionDraft.supplyCap} onChange={(event) => setEditionDraft((current) => ({ ...current, supplyCap: event.target.value }))} />
                 </>
               ) : null}
+
               <label htmlFor="ugc-edition-price">Preço por unidade</label>
               <input id="ugc-edition-price" className={styles.input} type="number" min="1" step="1" value={editionDraft.unitPriceMinor} onChange={(event) => setEditionDraft((current) => ({ ...current, unitPriceMinor: event.target.value }))} />
+
               <label><input type="checkbox" checked={editionDraft.transferable} onChange={(event) => setEditionDraft((current) => ({ ...current, transferable: event.target.checked, resaleAllowed: event.target.checked ? current.resaleAllowed : false }))} /> Transferível entre usuários</label>
               <label><input type="checkbox" checked={editionDraft.resaleAllowed} disabled={!editionDraft.transferable} onChange={(event) => setEditionDraft((current) => ({ ...current, resaleAllowed: event.target.checked }))} /> Revenda permitida</label>
+
               <div className={styles.actions}>
                 <button className={styles.button} type="button" disabled={busy || !editionReady} onClick={() => void createEdition()}>Criar edição</button>
               </div>
@@ -392,31 +454,43 @@ export function UgcCreatorStudio() {
         <div className={styles.sectionHeader}>
           <div>
             <h4 id="blueprint-list-title">Blueprints</h4>
-            <p>Publicação congela a versão. Para mudanças posteriores, crie uma nova versão/hash.</p>
+            <p>Publicação congela a versão. Blueprints legados sem declaração precisam ser reparados em rascunho antes de nova publicação.</p>
           </div>
           <span className={styles.pill}>{blueprints.length} blueprints</span>
         </div>
+
         {blueprints.length === 0 ? <div className={styles.empty}>Nenhum blueprint criado ainda.</div> : (
           <div className={styles.activityList}>
-            {blueprints.map((blueprint) => (
-              <article className={styles.activity} key={blueprint.id}>
-                <div>
-                  <h4>{blueprint.name} · v{blueprint.version}</h4>
-                  <p>{blueprint.category} · {blueprintStatus(blueprint.status)} · royalty {Number(blueprint.royalty_bps) / 100}%</p>
-                  <p className={styles.code}>Hash {blueprint.content_hash}</p>
-                </div>
-                <div className={styles.inlineActions}>
-                  {blueprint.status === "draft" ? (
-                    <>
-                      <button className={styles.buttonQuiet} type="button" disabled={busy} onClick={() => beginBlueprintEdit(blueprint)}>Editar</button>
-                      <button className={styles.button} type="button" disabled={busy} onClick={() => void transitionBlueprint(blueprint, "publish")}>Publicar versão</button>
-                    </>
-                  ) : null}
-                  {blueprint.status === "published" ? <button className={styles.buttonQuiet} type="button" disabled={busy} onClick={() => void transitionBlueprint(blueprint, "retire")}>Aposentar blueprint</button> : null}
-                  {blueprint.status === "rejected" ? <span className={styles.pill}>Use Segurança para acompanhar/apelar</span> : null}
-                </div>
-              </article>
-            ))}
+            {blueprints.map((blueprint) => {
+              const integrityActive = Boolean(blueprint.asset_manifest_registry_id && blueprint.manifest_registry_status === "declared");
+              return (
+                <article className={styles.activity} key={blueprint.id}>
+                  <div>
+                    <h4>{blueprint.name} · v{blueprint.version}</h4>
+                    <p>{blueprint.category} · {blueprintStatus(blueprint.status)} · royalty {Number(blueprint.royalty_bps) / 100}%</p>
+                    <p><span className={styles.pill}>{integrityLabel(blueprint)}</span></p>
+                    <p className={styles.code}>{blueprint.asset_manifest_uri}</p>
+                    <p className={styles.code}>SHA-256 {blueprint.content_hash}</p>
+                  </div>
+                  <div className={styles.inlineActions}>
+                    {blueprint.status === "draft" ? (
+                      <>
+                        <button className={styles.buttonQuiet} type="button" disabled={busy} onClick={() => beginBlueprintEdit(blueprint)}>Editar</button>
+                        <button
+                          className={styles.button}
+                          type="button"
+                          disabled={busy || !integrityActive}
+                          title={integrityActive ? "Publicar versão" : "Registre HTTPS + SHA-256 válido antes de publicar"}
+                          onClick={() => void transitionBlueprint(blueprint, "publish")}
+                        >Publicar versão</button>
+                      </>
+                    ) : null}
+                    {blueprint.status === "published" ? <button className={styles.buttonQuiet} type="button" disabled={busy} onClick={() => void transitionBlueprint(blueprint, "retire")}>Aposentar blueprint</button> : null}
+                    {blueprint.status === "rejected" ? <span className={styles.pill}>Use Segurança para acompanhar/apelar</span> : null}
+                  </div>
+                </article>
+              );
+            })}
           </div>
         )}
       </section>
@@ -437,6 +511,7 @@ export function UgcCreatorStudio() {
                   <h4>{edition.blueprint_name} v{edition.blueprint_version} · {edition.edition_name}</h4>
                   <p>{edition.scarcity} · {supplyLabel(edition)} · {Number(edition.unit_price_minor)} unidades mínimas</p>
                   <p>{edition.transferable ? "Transferível" : "Não transferível"} · {edition.resale_allowed ? `Revenda com royalty ${Number(edition.royalty_bps) / 100}%` : "Revenda desabilitada"}</p>
+                  <p><span className={styles.pill}>{edition.asset_manifest_registry_id ? "Manifest registrado" : "Edição legada"}</span></p>
                 </div>
               </article>
             ))}
