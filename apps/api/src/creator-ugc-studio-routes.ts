@@ -73,6 +73,35 @@ export async function registerCreatorUgcStudioRoutes(app: FastifyInstance): Prom
     };
   });
 
+  app.get("/v1/ugc/studio/blueprints/me", async (request) => {
+    const actor = await requireActor(app, request);
+    const query = listQuery.parse(request.query);
+    const rows = await economySql`
+      SELECT blueprint.id,blueprint.creator_user_id,blueprint.name,blueprint.category,
+        blueprint.version,blueprint.asset_manifest_uri,blueprint.content_hash,
+        blueprint.royalty_bps,blueprint.status,blueprint.tokenization_status,
+        blueprint.asset_manifest_registry_id,blueprint.created_at,blueprint.updated_at,
+        registry.status manifest_registry_status,
+        registry.manifest_uri manifest_registry_uri,
+        registry.sha256 manifest_registry_sha256
+      FROM ugc_object_blueprints blueprint
+      LEFT JOIN ugc_asset_manifest_registry registry ON registry.id=blueprint.asset_manifest_registry_id
+      WHERE blueprint.creator_user_id=${actor.userId}::uuid
+      ORDER BY blueprint.updated_at DESC,blueprint.id DESC
+      LIMIT ${query.limit}
+    `;
+    return {
+      blueprints: rows,
+      semantics: {
+        status: "creator-declared-integrity",
+        remoteBytesFetched: false,
+        malwareScanned: false,
+        externallyAnchored: false
+      },
+      signature: "Tehkné Solutions"
+    };
+  });
+
   app.get("/v1/ugc/studio/manifests/me", async (request) => {
     const actor = await requireActor(app, request);
     const query = listQuery.parse(request.query);
