@@ -13,8 +13,16 @@ x-app-environment: &app-environment
   INTERNAL_API_TOKEN_FILE: /run/secrets/internal_api_token
   DATA_ENCRYPTION_KEY_FILE: /run/secrets/data_encryption_key
   TRANSACTIONAL_EMAIL_TOKEN_FILE: /run/secrets/transactional_email_token
+  OBJECT_STORAGE_ACCESS_KEY_FILE: /run/secrets/object_storage_access_key
+  OBJECT_STORAGE_SECRET_KEY_FILE: /run/secrets/object_storage_secret_key
+  OBJECT_STORAGE_UPLOAD_SIGNING_KEY_FILE: /run/secrets/object_storage_upload_signing_key
+  OBJECT_STORAGE_ENABLED: ${OBJECT_STORAGE_ENABLED:-true}
+  OBJECT_STORAGE_ENDPOINT: ${OBJECT_STORAGE_ENDPOINT:-http://object-storage:8333}
+  OBJECT_STORAGE_BUCKET: ${OBJECT_STORAGE_BUCKET:-nova-aurora-ugc}
+  OBJECT_STORAGE_REGION: ${OBJECT_STORAGE_REGION:-us-east-1}
   ALLOW_RECOVERY_TOKEN_RESPONSE: "false"
   PUBLIC_WEB_URL: ${PUBLIC_WEB_URL:-https://${DOMAIN:?DOMAIN obrigatório}}
+  PUBLIC_API_URL: ${PUBLIC_API_URL:-https://api.${DOMAIN:?DOMAIN obrigatório}}
   PUBLIC_REGISTRATION_MODE: ${PUBLIC_REGISTRATION_MODE:-invite-only}
   TRANSACTIONAL_EMAIL_ENDPOINT: ${TRANSACTIONAL_EMAIL_ENDPOINT:?TRANSACTIONAL_EMAIL_ENDPOINT obrigatório}
   TRANSACTIONAL_EMAIL_FROM: ${TRANSACTIONAL_EMAIL_FROM:?TRANSACTIONAL_EMAIL_FROM obrigatório}
@@ -28,6 +36,9 @@ x-app-secrets: &app-secrets
   - internal_api_token
   - data_encryption_key
   - transactional_email_token
+  - object_storage_access_key
+  - object_storage_secret_key
+  - object_storage_upload_signing_key
 
 x-node-runtime: &node-runtime
   restart: unless-stopped
@@ -73,6 +84,30 @@ services:
       start_period: 5s
     security_opt: ["no-new-privileges:true"]
 
+  object-storage:
+    image: chrislusf/seaweedfs:4.29
+    restart: unless-stopped
+    entrypoint: ["/bin/sh", "-ec"]
+    command:
+      - |
+        export AWS_ACCESS_KEY_ID="$$(cat /run/secrets/object_storage_access_key)"
+        export AWS_SECRET_ACCESS_KEY="$$(cat /run/secrets/object_storage_secret_key)"
+        export S3_BUCKET="${OBJECT_STORAGE_BUCKET:-nova-aurora-ugc}"
+        exec weed mini -dir=/data
+    secrets:
+      - object_storage_access_key
+      - object_storage_secret_key
+    volumes: [object_storage_data:/data]
+    networks: [backend]
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:9333/cluster/status"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 15s
+    security_opt: ["no-new-privileges:true"]
+    stop_grace_period: 30s
+
   migrate:
     image: ${IMAGE_REGISTRY:-ghcr.io/tehkne-solutions}/nova-aurora-api:${IMAGE_TAG:-latest}
     build:
@@ -89,6 +124,9 @@ services:
       - internal_api_token
       - data_encryption_key
       - transactional_email_token
+      - object_storage_access_key
+      - object_storage_secret_key
+      - object_storage_upload_signing_key
       - bootstrap_admin_password
       - bootstrap_bob_password
     command: ["node", "infra/docker/migrate-and-secure.mjs"]
@@ -114,6 +152,7 @@ services:
       migrate: { condition: service_completed_successfully }
       postgres: { condition: service_healthy }
       redis: { condition: service_healthy }
+      object-storage: { condition: service_healthy }
     healthcheck:
       test: ["CMD", "node", "-e", "fetch('http://localhost:4000/health/ready').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
       interval: 15s
@@ -135,6 +174,7 @@ services:
       migrate: { condition: service_completed_successfully }
       postgres: { condition: service_healthy }
       redis: { condition: service_healthy }
+      object-storage: { condition: service_healthy }
     healthcheck:
       test: ["CMD", "node", "-e", "fetch('http://localhost:4010/health/ready').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
       interval: 15s
@@ -267,6 +307,12 @@ secrets:
     file: ${SECRETS_DIR:-./secrets}/bootstrap_bob_password.txt
   grafana_admin_password:
     file: ${SECRETS_DIR:-./secrets}/grafana_admin_password.txt
+  object_storage_access_key:
+    file: ${SECRETS_DIR:-./secrets}/object_storage_access_key.txt
+  object_storage_secret_key:
+    file: ${SECRETS_DIR:-./secrets}/object_storage_secret_key.txt
+  object_storage_upload_signing_key:
+    file: ${SECRETS_DIR:-./secrets}/object_storage_upload_signing_key.txt
 
 networks:
   edge:
@@ -276,6 +322,7 @@ networks:
 volumes:
   postgres_data:
   redis_data:
+  object_storage_data:
   prometheus_data:
   grafana_data:
   backup_data:

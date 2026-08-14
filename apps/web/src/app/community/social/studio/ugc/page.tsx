@@ -18,6 +18,7 @@ export default function UgcCreatorStudioPage() {
             </p>
           </div>
           <div className={styles.headerActions}>
+            <Link className={styles.link} href="/community/social/studio/ugc/upload">Verificar manifesto</Link>
             <Link className={styles.link} href="/community/social/studio">Creator Studio</Link>
             <Link className={styles.link} href="/community/social">Hub Social</Link>
           </div>
