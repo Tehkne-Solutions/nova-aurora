@@ -1,6 +1,6 @@
 import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -22,13 +22,18 @@ const child = spawn(chrome, [
   "--no-sandbox",
   "--disable-dev-shm-usage",
   "--disable-gpu",
-  "--remote-debugging-port=9222",
+  "--remote-debugging-port=0",
   `--user-data-dir=${profile}`,
   "--window-size=1440,1000",
   "about:blank"
 ], { stdio: ["ignore", "pipe", "pipe"] });
 let stderr = "";
 child.stderr.on("data", (chunk) => { stderr += String(chunk); });
+
+process.on("exit", () => {
+  if (!child.killed) child.kill("SIGKILL");
+  if (child.exitCode && stderr) console.error(stderr.slice(-4000));
+});
 
 async function retry(operation, timeoutMs = 20_000) {
   const deadline = Date.now() + timeoutMs;
@@ -40,13 +45,26 @@ async function retry(operation, timeoutMs = 20_000) {
   throw lastError ?? new Error("Tempo limite excedido.");
 }
 
-await retry(async () => {
-  const response = await fetch("http://127.0.0.1:9222/json/version");
+const devToolsPortFile = join(profile, "DevToolsActivePort");
+const cdpBaseUrl = await retry(async () => {
+  if (child.exitCode !== null) {
+    const detail = stderr.trim().slice(-2000);
+    throw new Error(`Chrome encerrou antes do DevTools ficar disponível (exit=${child.exitCode}).${detail ? ` ${detail}` : ""}`);
+  }
+  const activePort = await readFile(devToolsPortFile, "utf8");
+  const [portLine] = activePort.trim().split(/\r?\n/);
+  const port = Number(portLine);
+  if (!Number.isInteger(port) || port <= 0 || port > 65535) {
+    throw new Error(`DevToolsActivePort inválido: ${portLine ?? "vazio"}`);
+  }
+  const baseUrl = `http://127.0.0.1:${port}`;
+  const response = await fetch(`${baseUrl}/json/version`);
   if (!response.ok) throw new Error("Chrome DevTools ainda não respondeu.");
-});
+  return baseUrl;
+}, 30_000);
 
 const targetResponse = await fetch(
-  `http://127.0.0.1:9222/json/new?${encodeURIComponent(`${webUrl}/login`)}`,
+  `${cdpBaseUrl}/json/new?${encodeURIComponent(`${webUrl}/login`)}`,
   { method: "PUT" }
 );
 if (!targetResponse.ok) throw new Error(`Não foi possível criar aba CDP: ${targetResponse.status}.`);
@@ -216,8 +234,3 @@ await retry(async () => {
   await rm(profile, { recursive: true, force: true });
 }, 5_000);
 console.log(JSON.stringify({ status: "passed", pages: report.pages.length, signature: "Tehkné Solutions" }));
-
-process.on("exit", () => {
-  if (!child.killed) child.kill("SIGKILL");
-  if (child.exitCode && stderr) console.error(stderr.slice(-4000));
-});
