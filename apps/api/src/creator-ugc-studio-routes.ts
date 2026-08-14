@@ -3,6 +3,7 @@ import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { db } from "@nova-aurora/database";
 import { requireActor } from "./auth-context.js";
+import { publicVerifiedManifestUri, registerUgcAssetUploadRoutes } from "./ugc-asset-upload-routes.js";
 
 const economySql = db();
 
@@ -23,7 +24,8 @@ const blueprintCreateSchema = z.object({
   assetManifestUri: httpsManifestUriSchema,
   contentHash: sha256Schema,
   royaltyBps: z.number().int().min(0).max(5000),
-  tokenizationStatus: tokenizationSchema.default("disabled")
+  tokenizationStatus: tokenizationSchema.default("disabled"),
+  verifiedUploadId: z.string().uuid().optional()
 });
 const blueprintEditSchema = z.object({
   name: z.string().trim().min(1).max(160).optional(),
@@ -32,7 +34,8 @@ const blueprintEditSchema = z.object({
   assetManifestUri: httpsManifestUriSchema.optional(),
   contentHash: sha256Schema.optional(),
   royaltyBps: z.number().int().min(0).max(5000).optional(),
-  tokenizationStatus: tokenizationSchema.optional()
+  tokenizationStatus: tokenizationSchema.optional(),
+  verifiedUploadId: z.string().uuid().optional()
 }).refine((body) => Object.keys(body).length > 0, { message: "Informe pelo menos um campo para edição." });
 
 const listQuery = z.object({ limit: z.coerce.number().int().min(1).max(200).default(100) });
@@ -46,28 +49,77 @@ async function ownedBlueprint(app: FastifyInstance, sql: Queryable, blueprintId:
   return blueprint;
 }
 
+async function requireVerifiedUpload(
+  app: FastifyInstance,
+  sql: Queryable,
+  input: { uploadId: string; userId: string; manifestUri: string; sha256: string }
+) {
+  const upload = (await sql`
+    SELECT id,owner_user_id,status,verified_sha256
+    FROM ugc_asset_upload_sessions
+    WHERE id=${input.uploadId}::uuid
+    FOR UPDATE
+  `)[0];
+  if (!upload || String(upload.owner_user_id) !== input.userId) {
+    throw app.httpErrors.notFound("Upload verificado do criador não encontrado.");
+  }
+  if (String(upload.status) !== "verified") {
+    throw app.httpErrors.conflict("O upload precisa estar verificado antes de ser vinculado ao blueprint.");
+  }
+  const expectedUri = publicVerifiedManifestUri(input.uploadId);
+  if (input.manifestUri !== expectedUri || input.sha256 !== String(upload.verified_sha256)) {
+    throw app.httpErrors.conflict("URI ou SHA-256 não correspondem aos bytes verificados pelo object storage.");
+  }
+  return upload;
+}
+
+async function bindVerifiedUpload(sql: Queryable, registryId: string, uploadId: string): Promise<void> {
+  await sql`
+    UPDATE ugc_asset_manifest_registry
+    SET verified_upload_id=${uploadId}::uuid,updated_at=now()
+    WHERE id=${registryId}::uuid
+  `;
+}
+
 export async function registerCreatorUgcStudioRoutes(app: FastifyInstance): Promise<void> {
+  await registerUgcAssetUploadRoutes(app);
+
   app.post("/v1/ugc/studio/blueprints", async (request) => {
     const actor = await requireActor(app, request);
     const body = blueprintCreateSchema.parse(request.body);
     const id = randomUUID();
-    const blueprint = (await economySql`
-      INSERT INTO ugc_object_blueprints(
-        id,creator_user_id,name,category,version,asset_manifest_uri,content_hash,
-        royalty_bps,status,tokenization_status
-      ) VALUES(
-        ${id}::uuid,${actor.userId}::uuid,${body.name},${body.category},${body.version},
-        ${body.assetManifestUri},${body.contentHash},${body.royaltyBps},'draft',${body.tokenizationStatus}
-      )
-      RETURNING *
-    `)[0]!;
+    const blueprint = await economySql.begin("isolation level serializable", async (tx) => {
+      if (body.verifiedUploadId) {
+        await requireVerifiedUpload(app, tx, {
+          uploadId: body.verifiedUploadId,
+          userId: actor.userId,
+          manifestUri: body.assetManifestUri,
+          sha256: body.contentHash
+        });
+      }
+      const created = (await tx`
+        INSERT INTO ugc_object_blueprints(
+          id,creator_user_id,name,category,version,asset_manifest_uri,content_hash,
+          royalty_bps,status,tokenization_status
+        ) VALUES(
+          ${id}::uuid,${actor.userId}::uuid,${body.name},${body.category},${body.version},
+          ${body.assetManifestUri},${body.contentHash},${body.royaltyBps},'draft',${body.tokenizationStatus}
+        )
+        RETURNING *
+      `)[0]!;
+      if (body.verifiedUploadId && created.asset_manifest_registry_id) {
+        await bindVerifiedUpload(tx, String(created.asset_manifest_registry_id), body.verifiedUploadId);
+      }
+      return created;
+    });
     return {
       blueprint,
       integrity: {
         declarationId: blueprint.asset_manifest_registry_id ? String(blueprint.asset_manifest_registry_id) : null,
         scheme: "https",
         algorithm: "sha256",
-        remoteVerification: false
+        remoteVerification: Boolean(body.verifiedUploadId),
+        verifiedUploadId: body.verifiedUploadId ?? null
       },
       signature: "Tehkné Solutions"
     };
@@ -83,9 +135,13 @@ export async function registerCreatorUgcStudioRoutes(app: FastifyInstance): Prom
         blueprint.asset_manifest_registry_id,blueprint.created_at,blueprint.updated_at,
         registry.status manifest_registry_status,
         registry.manifest_uri manifest_registry_uri,
-        registry.sha256 manifest_registry_sha256
+        registry.sha256 manifest_registry_sha256,
+        registry.verified_upload_id,
+        upload.status verified_upload_status,
+        upload.verified_at
       FROM ugc_object_blueprints blueprint
       LEFT JOIN ugc_asset_manifest_registry registry ON registry.id=blueprint.asset_manifest_registry_id
+      LEFT JOIN ugc_asset_upload_sessions upload ON upload.id=registry.verified_upload_id
       WHERE blueprint.creator_user_id=${actor.userId}::uuid
       ORDER BY blueprint.updated_at DESC,blueprint.id DESC
       LIMIT ${query.limit}
@@ -93,8 +149,8 @@ export async function registerCreatorUgcStudioRoutes(app: FastifyInstance): Prom
     return {
       blueprints: rows,
       semantics: {
-        status: "creator-declared-integrity",
-        remoteBytesFetched: false,
+        status: "creator-declared-or-platform-verified-integrity",
+        remoteBytesFetched: true,
         malwareScanned: false,
         externallyAnchored: false
       },
@@ -107,22 +163,24 @@ export async function registerCreatorUgcStudioRoutes(app: FastifyInstance): Prom
     const query = listQuery.parse(request.query);
     const rows = await economySql`
       SELECT registry.id,registry.manifest_uri,registry.sha256,registry.status,
-        registry.created_at,registry.updated_at,registry.revoked_at,
+        registry.created_at,registry.updated_at,registry.revoked_at,registry.verified_upload_id,
+        upload.status verified_upload_status,upload.verified_at,upload.verified_size_bytes,
         count(blueprint.id)::int blueprint_count,
         count(blueprint.id) FILTER(WHERE blueprint.status='published')::int published_blueprints,
         max(blueprint.updated_at) last_blueprint_at
       FROM ugc_asset_manifest_registry registry
       LEFT JOIN ugc_object_blueprints blueprint ON blueprint.asset_manifest_registry_id=registry.id
+      LEFT JOIN ugc_asset_upload_sessions upload ON upload.id=registry.verified_upload_id
       WHERE registry.owner_user_id=${actor.userId}::uuid
-      GROUP BY registry.id
+      GROUP BY registry.id,upload.id
       ORDER BY registry.updated_at DESC,registry.id DESC
       LIMIT ${query.limit}
     `;
     return {
       manifests: rows,
       semantics: {
-        status: "creator-declared-integrity",
-        remoteBytesFetched: false,
+        status: "creator-declared-or-platform-verified-integrity",
+        remoteBytesFetched: true,
         malwareScanned: false,
         externallyAnchored: false
       },
@@ -139,9 +197,11 @@ export async function registerCreatorUgcStudioRoutes(app: FastifyInstance): Prom
         edition.transferable,edition.resale_allowed,edition.tokenization_eligible,
         edition.created_at,blueprint.name blueprint_name,blueprint.version blueprint_version,
         blueprint.category,blueprint.status blueprint_status,blueprint.royalty_bps,
-        blueprint.asset_manifest_uri,blueprint.content_hash,blueprint.asset_manifest_registry_id
+        blueprint.asset_manifest_uri,blueprint.content_hash,blueprint.asset_manifest_registry_id,
+        registry.verified_upload_id
       FROM ugc_object_editions edition
       JOIN ugc_object_blueprints blueprint ON blueprint.id=edition.blueprint_id
+      LEFT JOIN ugc_asset_manifest_registry registry ON registry.id=blueprint.asset_manifest_registry_id
       WHERE blueprint.creator_user_id=${actor.userId}::uuid
       ORDER BY edition.created_at DESC,edition.id DESC
       LIMIT ${query.limit}
@@ -185,7 +245,15 @@ export async function registerCreatorUgcStudioRoutes(app: FastifyInstance): Prom
       const finalManifestUri = body.assetManifestUri ?? String(current.asset_manifest_uri);
       const finalContentHash = body.contentHash ?? String(current.content_hash);
       httpsManifestUriSchema.parse(finalManifestUri);
-      sha256Schema.parse(finalContentHash);
+      const normalizedHash = sha256Schema.parse(finalContentHash);
+      if (body.verifiedUploadId) {
+        await requireVerifiedUpload(app, tx, {
+          uploadId: body.verifiedUploadId,
+          userId: actor.userId,
+          manifestUri: finalManifestUri,
+          sha256: normalizedHash
+        });
+      }
 
       const updated = (await tx`
         UPDATE ugc_object_blueprints SET
@@ -193,13 +261,16 @@ export async function registerCreatorUgcStudioRoutes(app: FastifyInstance): Prom
           category=${body.category ?? String(current.category)},
           version=${body.version ?? Number(current.version)},
           asset_manifest_uri=${finalManifestUri},
-          content_hash=${finalContentHash.toLowerCase()},
+          content_hash=${normalizedHash},
           royalty_bps=${body.royaltyBps ?? Number(current.royalty_bps)},
           tokenization_status=${body.tokenizationStatus ?? String(current.tokenization_status)},
           updated_at=now()
         WHERE id=${blueprintId}::uuid
         RETURNING *
       `)[0]!;
+      if (body.verifiedUploadId && updated.asset_manifest_registry_id) {
+        await bindVerifiedUpload(tx, String(updated.asset_manifest_registry_id), body.verifiedUploadId);
+      }
       return updated;
     });
 
@@ -209,7 +280,8 @@ export async function registerCreatorUgcStudioRoutes(app: FastifyInstance): Prom
         declarationId: result.asset_manifest_registry_id ? String(result.asset_manifest_registry_id) : null,
         scheme: "https",
         algorithm: "sha256",
-        remoteVerification: false
+        remoteVerification: Boolean(body.verifiedUploadId),
+        verifiedUploadId: body.verifiedUploadId ?? null
       },
       signature: "Tehkné Solutions"
     };
