@@ -109,15 +109,17 @@ async function objectRequest(input: {
   const url = new URL(`${config.endpoint}${path}`);
   const body = input.body ?? Buffer.alloc(0);
   const headers = authorizationHeaders({ method: input.method, url, body, config });
-  const response = await fetch(url, {
+  const init: RequestInit = {
     method: input.method,
     headers: {
       ...headers,
       ...(input.contentType ? { "content-type": input.contentType } : {})
-    },
-    ...(input.method === "PUT" ? { body } : {})
-  });
-  return response;
+    }
+  };
+  if (input.method === "PUT") {
+    init.body = Uint8Array.from(body).buffer;
+  }
+  return fetch(url, init);
 }
 
 async function storageError(response: Response, action: string): Promise<Error> {
