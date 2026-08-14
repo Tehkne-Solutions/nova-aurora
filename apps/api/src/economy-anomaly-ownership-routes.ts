@@ -8,6 +8,7 @@ import { registerCreatorPlayerEconomyAppealRoutes } from "./creator-player-econo
 import { registerCreatorPlayerEconomyDiscoveryRoutes } from "./creator-player-economy-discovery-routes.js";
 import { registerCreatorPlayerEconomyModerationRoutes } from "./creator-player-economy-moderation-routes.js";
 import { registerCreatorPlayerEconomySettlementRoutes } from "./creator-player-economy-settlement-routes.js";
+import { registerCreatorPrivateMessageRoutes } from "./creator-private-message-routes.js";
 import { registerCreatorSocialAbuseControls } from "./creator-social-abuse-controls.js";
 import { registerCreatorSocialCommentAppealRoutes } from "./creator-social-comment-appeal-routes.js";
 import { registerCreatorSocialCommentRoutes } from "./creator-social-comment-routes.js";
@@ -40,6 +41,7 @@ export async function registerEconomyAnomalyOwnershipRoutes(app:FastifyInstance)
   await registerCreatorPlayerEconomyAppealRoutes(app);
   await registerCreatorSocialCommentRoutes(app);
   await registerCreatorSocialCommentAppealRoutes(app);
+  await registerCreatorPrivateMessageRoutes(app);
   await registerEconomyAnomalyOperationsDashboardRoutes(app);
   await registerEconomyAnomalyOwnerWorkloadRoutes(app);
   await registerEconomyAnomalyRebalancingRoutes(app);

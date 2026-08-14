@@ -18,7 +18,14 @@ const rateActionByRoute: Readonly<Record<string, SocialRateAction>> = {
   "POST /v1/creator/content/:contentId/view": "content_view",
   "POST /v1/creator-moderation/reports": "moderation_report",
   "POST /v1/creator-moderation/reports/:reportId/appeal": "moderation_appeal",
-  "POST /v1/creator-moderation/comment-reports/:reportId/appeal": "moderation_appeal"
+  "POST /v1/creator-moderation/comment-reports/:reportId/appeal": "moderation_appeal",
+  "POST /v1/creator/dm/requests": "dm_request",
+  "POST /v1/creator/dm/threads/:threadId/accept": "dm_thread_mutation",
+  "POST /v1/creator/dm/threads/:threadId/decline": "dm_thread_mutation",
+  "POST /v1/creator/dm/threads/:threadId/close": "dm_thread_mutation",
+  "POST /v1/creator/dm/threads/:threadId/messages": "dm_send",
+  "DELETE /v1/creator/dm/messages/:messageId": "dm_message_mutation",
+  "POST /v1/creator/dm/messages/:messageId/report": "dm_report"
 };
 
 const summaryQuery = z.object({
