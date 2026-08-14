@@ -2,6 +2,7 @@ import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { db } from "@nova-aurora/database";
 import { requireActor } from "./auth-context.js";
+import { registerCreatorUgcStudioRoutes } from "./creator-ugc-studio-routes.js";
 
 const economySql = db();
 
@@ -57,6 +58,8 @@ async function requireOwnedChannel(
 }
 
 export async function registerCreatorStudioRoutes(app: FastifyInstance): Promise<void> {
+  await registerCreatorUgcStudioRoutes(app);
+
   app.get("/v1/creator/content/me", async (request) => {
     const actor = await requireActor(app, request);
     const query = listQuery.parse(request.query);
