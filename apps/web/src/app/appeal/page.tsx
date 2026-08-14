@@ -41,6 +41,7 @@ export default function AppealPage() {
           <p>Uma pessoa diferente revisa a justificativa e registra a decisão auditável.</p>
         </div>
         <nav>
+          <Link href="/community/social" className={styles.link}>Hub Social</Link>
           <Link href="/account" className={styles.link}>Conta</Link>
           <Link href="/trust" className={styles.link}>Confiança</Link>
           <Link href="/report" className={styles.link}>Denunciar</Link>
@@ -49,8 +50,21 @@ export default function AppealPage() {
       <p className={styles.message} role="status" aria-live="polite">{message}</p>
       <section className={styles.grid}>
         <article className={styles.section}>
-          <p className={styles.eyebrow}>NOVO RECURSO</p>
+          <p className={styles.eyebrow}>CREATOR ECONOMY</p>
+          <h2>Conteúdo, comentários, mensagens e canais</h2>
+          <p>
+            Restrições da Creator Economy agora aparecem automaticamente no Hub Social, em
+            <strong> Segurança</strong>. Lá o caso já vem ligado ao relatório correto, sem copiar IDs manualmente,
+            e o status da apelação fica visível até a decisão.
+          </p>
+          <div className={styles.actions}>
+            <Link href="/community/social" className={styles.link}>Abrir Segurança do Hub Social</Link>
+          </div>
+        </article>
+        <article className={styles.section}>
+          <p className={styles.eyebrow}>AÇÕES LEGADAS DA PLATAFORMA</p>
           <h2>Apresente sua justificativa</h2>
+          <p>Use este formulário somente quando a decisão recebida informar explicitamente um ID de ação de moderação legado.</p>
           <form className={styles.form} onSubmit={submit}>
             <label>ID da ação<input className={styles.input} value={actionId} onChange={(event) => setActionId(event.target.value)} required/></label>
             <label>Justificativa<textarea className={styles.textarea} value={statement} onChange={(event) => setStatement(event.target.value)} minLength={16} maxLength={8000} required/></label>
@@ -61,9 +75,9 @@ export default function AppealPage() {
           <p className={styles.eyebrow}>GARANTIAS</p>
           <h2>Trilha de decisão</h2>
           <ul>
-            <li>O texto é criptografado em repouso.</li>
+            <li>A revisão fica vinculada à decisão original.</li>
             <li>A decisão registra revisor, horário e fundamentação.</li>
-            <li>Recurso acolhido revoga a ação e exige nova ativação quando aplicável.</li>
+            <li>Na Creator Economy, o moderador original e o apelante não podem julgar a própria apelação.</li>
           </ul>
         </article>
       </section>
