@@ -58,18 +58,28 @@ export async function registerCreatorPlayerEconomyDiscoveryRoutes(app: FastifyIn
     const actor = await requireActor(app, request);
     const query = windowQuery.parse(request.query);
     const rows = await economySql`
+      WITH event_metrics AS (
+        SELECT placement.campaign_id,
+          count(*) FILTER(WHERE event.event_type='impression')::int impressions,
+          count(*) FILTER(WHERE event.event_type='click')::int clicks
+        FROM economy_ad_placements placement
+        JOIN economy_ad_events event ON event.placement_id=placement.id
+        WHERE event.occurred_at>=now()-(${query.days}::text||' days')::interval
+        GROUP BY placement.campaign_id
+      ), settlement_metrics AS (
+        SELECT campaign_id,sum(gross_minor)::bigint settled_minor
+        FROM economy_ad_settlements
+        WHERE settled_at>=now()-(${query.days}::text||' days')::interval
+        GROUP BY campaign_id
+      )
       SELECT campaign.id,campaign.name,campaign.status,campaign.budget_minor,campaign.spent_minor,
-        count(DISTINCT event.id) FILTER(WHERE event.event_type='impression')::int impressions,
-        count(DISTINCT event.id) FILTER(WHERE event.event_type='click')::int clicks,
-        coalesce(sum(DISTINCT settlement.gross_minor),0)::bigint settled_minor
+        coalesce(event_metrics.impressions,0)::int impressions,
+        coalesce(event_metrics.clicks,0)::int clicks,
+        coalesce(settlement_metrics.settled_minor,0)::bigint settled_minor
       FROM economy_ad_campaigns campaign
-      LEFT JOIN economy_ad_placements placement ON placement.campaign_id=campaign.id
-      LEFT JOIN economy_ad_events event ON event.placement_id=placement.id
-        AND event.occurred_at>=now()-(${query.days}::text||' days')::interval
-      LEFT JOIN economy_ad_settlements settlement ON settlement.placement_id=placement.id
-        AND settlement.settled_at>=now()-(${query.days}::text||' days')::interval
+      LEFT JOIN event_metrics ON event_metrics.campaign_id=campaign.id
+      LEFT JOIN settlement_metrics ON settlement_metrics.campaign_id=campaign.id
       WHERE campaign.advertiser_user_id=${actor.userId}::uuid
-      GROUP BY campaign.id
       ORDER BY campaign.updated_at DESC
     `;
     const publisher = (await economySql`
@@ -170,6 +180,12 @@ export async function registerCreatorPlayerEconomyDiscoveryRoutes(app: FastifyIn
       VALUES(${randomUUID()}::uuid,${contentId}::uuid,${actor.userId}::uuid,${key})
       ON CONFLICT(idempotency_key) DO NOTHING RETURNING id
     `;
+    if (inserted.length === 0) {
+      const prior = (await economySql`SELECT content_id,viewer_user_id FROM creator_content_views WHERE idempotency_key=${key}`)[0];
+      if (!prior || String(prior.content_id) !== contentId || String(prior.viewer_user_id) !== actor.userId) {
+        throw app.httpErrors.conflict("Idempotency-Key já utilizado por outra visualização.");
+      }
+    }
     return { contentId, counted: inserted.length > 0, signature: "Tehkné Solutions" };
   });
 
