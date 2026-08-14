@@ -118,7 +118,7 @@ export async function registerUgcAssetUploadRoutes(app: FastifyInstance): Promis
     return {
       upload: {
         id,
-        method: "PUT",
+        method: "POST",
         path: `/v1/ugc/assets/manifests/uploads/${id}/content?token=${token}`,
         contentType: "application/octet-stream",
         expiresAt: expiresAt.toISOString(),
@@ -128,7 +128,7 @@ export async function registerUgcAssetUploadRoutes(app: FastifyInstance): Promis
     };
   });
 
-  app.put<{
+  app.post<{
     Params: { uploadId: string };
     Querystring: { token: string };
   }>("/v1/ugc/assets/manifests/uploads/:uploadId/content", {
@@ -147,7 +147,6 @@ export async function registerUgcAssetUploadRoutes(app: FastifyInstance): Promis
       if (String(session.status) === "verified") {
         return {
           id: uploadId,
-          objectKey: String(session.object_key),
           sha256: String(session.verified_sha256),
           sizeBytes: Number(session.verified_size_bytes),
           alreadyVerified: true
@@ -209,7 +208,6 @@ export async function registerUgcAssetUploadRoutes(app: FastifyInstance): Promis
       `;
       return {
         id: uploadId,
-        objectKey: key,
         sha256: persistedSha,
         sizeBytes: persisted.length,
         alreadyVerified: false
