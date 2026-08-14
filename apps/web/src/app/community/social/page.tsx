@@ -46,6 +46,15 @@ type DiscoverItem = {
   followers: number | string;
 };
 
+type SocialRelationshipState = {
+  contentId: string;
+  channelId: string;
+  creatorUserId: string;
+  likedByRequester: boolean;
+  followingByRequester: boolean;
+  blockedBetween: boolean;
+};
+
 type CommentItem = {
   id: string;
   contentId: string;
@@ -157,6 +166,7 @@ export default function CreatorSocialHubPage() {
   });
   const [activities, setActivities] = useState<ActivityItem[]>([]);
   const [discover, setDiscover] = useState<DiscoverItem[]>([]);
+  const [socialStateByContent, setSocialStateByContent] = useState<Record<string, SocialRelationshipState>>({});
   const [dashboard, setDashboard] = useState<CreatorDashboard | null>(null);
   const [threads, setThreads] = useState<DmThread[]>([]);
 
@@ -181,6 +191,11 @@ export default function CreatorSocialHubPage() {
     setThreads(result.threads);
   }, []);
 
+  const refreshMessages = useCallback(async (threadId: string) => {
+    const result = await api<{ messages: DmMessage[] }>(`/v1/creator/dm/threads/${threadId}/messages?limit=100`);
+    setMessages([...result.messages].reverse());
+  }, []);
+
   const loadHub = useCallback(async () => {
     setError(null);
     try {
@@ -191,9 +206,19 @@ export default function CreatorSocialHubPage() {
         api<CreatorDashboard>("/v1/creator/dashboard/me?days=30"),
         api<{ threads: DmThread[] }>("/v1/creator/dm/threads?limit=40")
       ]);
+      const relationshipResult = discoverResult.items.length > 0
+        ? await api<{ states: SocialRelationshipState[] }>(
+          `/v1/creator/social-state?contentIds=${encodeURIComponent(discoverResult.items.map((item) => item.id).join(","))}`
+        )
+        : { states: [] };
+      const nextRelationshipState = Object.fromEntries(
+        relationshipResult.states.map((state) => [state.contentId, state])
+      ) as Record<string, SocialRelationshipState>;
+
       setSummary(summaryResult);
       setActivities(activityResult.items);
-      setDiscover(discoverResult.items);
+      setSocialStateByContent(nextRelationshipState);
+      setDiscover(discoverResult.items.filter((item) => !nextRelationshipState[item.id]?.blockedBetween));
       setDashboard(dashboardResult);
       setThreads(threadResult.threads);
     } catch (loadError) {
@@ -271,22 +296,48 @@ export default function CreatorSocialHubPage() {
     });
   }
 
-  async function likeContent(item: DiscoverItem) {
+  async function toggleLikeContent(item: DiscoverItem) {
+    const state = socialStateByContent[item.id];
+    const nextLiked = !state?.likedByRequester;
     await run(async () => {
-      await api(`/v1/creator/content/${item.id}/like`, { method: "POST" });
+      await api(`/v1/creator/content/${item.id}/like`, { method: nextLiked ? "POST" : "DELETE" });
+      setSocialStateByContent((current) => ({
+        ...current,
+        [item.id]: {
+          ...(current[item.id] ?? {
+            contentId: item.id,
+            channelId: item.channel_id,
+            creatorUserId: item.creator_user_id,
+            followingByRequester: false,
+            blockedBetween: false
+          }),
+          likedByRequester: nextLiked
+        }
+      }));
       setDiscover((current) => current.map((candidate) => candidate.id === item.id
-        ? { ...candidate, likes: count(candidate.likes) + 1 }
+        ? { ...candidate, likes: Math.max(0, count(candidate.likes) + (nextLiked ? 1 : -1)) }
         : candidate));
-    }, "Curtida registrada.");
+    }, nextLiked ? "Curtida registrada." : "Curtida removida.");
   }
 
-  async function followCreator(item: DiscoverItem) {
+  async function toggleFollowCreator(item: DiscoverItem) {
+    const state = socialStateByContent[item.id];
+    const nextFollowing = !state?.followingByRequester;
     await run(async () => {
-      await api(`/v1/creator/channels/${item.channel_id}/follow`, { method: "POST" });
+      await api(`/v1/creator/channels/${item.channel_id}/follow`, { method: nextFollowing ? "POST" : "DELETE" });
+      setSocialStateByContent((current) => {
+        const next = { ...current };
+        for (const [contentId, relationship] of Object.entries(current)) {
+          if (relationship.channelId === item.channel_id) {
+            next[contentId] = { ...relationship, followingByRequester: nextFollowing };
+          }
+        }
+        return next;
+      });
       setDiscover((current) => current.map((candidate) => candidate.channel_id === item.channel_id
-        ? { ...candidate, followers: count(candidate.followers) + 1 }
+        ? { ...candidate, followers: Math.max(0, count(candidate.followers) + (nextFollowing ? 1 : -1)) }
         : candidate));
-    }, `Agora você segue @${item.handle}.`);
+    }, nextFollowing ? `Agora você segue @${item.handle}.` : `Você deixou de seguir @${item.handle}.`);
   }
 
   async function submitComment() {
@@ -300,6 +351,13 @@ export default function CreatorSocialHubPage() {
       setCommentDraft("");
       await refreshComments(selectedContent.id);
     }, "Comentário publicado.");
+  }
+
+  async function deleteComment(comment: CommentItem) {
+    await run(async () => {
+      await api(`/v1/creator/comments/${comment.id}`, { method: "DELETE" });
+      await refreshComments(comment.contentId);
+    }, "Comentário removido.");
   }
 
   async function sendDmRequest() {
@@ -320,8 +378,7 @@ export default function CreatorSocialHubPage() {
   async function openThread(thread: DmThread) {
     setSelectedThreadId(thread.id);
     await run(async () => {
-      const result = await api<{ messages: DmMessage[] }>(`/v1/creator/dm/threads/${thread.id}/messages?limit=100`);
-      setMessages([...result.messages].reverse());
+      await refreshMessages(thread.id);
       await api(`/v1/creator/dm/threads/${thread.id}/read`, { method: "POST" });
       await refreshThreads();
     });
@@ -344,10 +401,18 @@ export default function CreatorSocialHubPage() {
         body: JSON.stringify({ body })
       });
       setDmDraft("");
-      const result = await api<{ messages: DmMessage[] }>(`/v1/creator/dm/threads/${selectedThread.id}/messages?limit=100`);
-      setMessages([...result.messages].reverse());
+      await refreshMessages(selectedThread.id);
       await refreshThreads();
     });
+  }
+
+  async function deleteMessage(message: DmMessage) {
+    if (!selectedThreadId) return;
+    await run(async () => {
+      await api(`/v1/creator/dm/messages/${message.id}`, { method: "DELETE" });
+      await refreshMessages(selectedThreadId);
+      await refreshThreads();
+    }, "Mensagem removida do histórico visível.");
   }
 
   async function afterContentBlock() {
@@ -429,6 +494,7 @@ export default function CreatorSocialHubPage() {
               <div className={styles.grid}>
                 {discover.map((item) => {
                   const own = identity?.id === item.creator_user_id;
+                  const relationship = socialStateByContent[item.id];
                   return (
                     <article className={styles.card} key={item.id}>
                       <div className={styles.cardTop}>
@@ -445,8 +511,12 @@ export default function CreatorSocialHubPage() {
                       </div>
                       <div className={styles.cardActions}>
                         <button className={styles.button} type="button" disabled={busy} onClick={() => void openContent(item)}>Abrir</button>
-                        <button className={styles.buttonQuiet} type="button" disabled={busy || own} onClick={() => void likeContent(item)}>Curtir</button>
-                        <button className={styles.buttonQuiet} type="button" disabled={busy || own} onClick={() => void followCreator(item)}>Seguir</button>
+                        <button className={styles.buttonQuiet} type="button" disabled={busy || own} onClick={() => void toggleLikeContent(item)}>
+                          {relationship?.likedByRequester ? "Descurtir" : "Curtir"}
+                        </button>
+                        <button className={styles.buttonQuiet} type="button" disabled={busy || own} onClick={() => void toggleFollowCreator(item)}>
+                          {relationship?.followingByRequester ? "Deixar de seguir" : "Seguir"}
+                        </button>
                         <button className={styles.buttonQuiet} type="button" disabled={busy || own} onClick={() => { setRequestTarget(item); setSelectedContent(null); }}>Mensagem</button>
                         {!own ? (
                           <SocialSafetyAction
@@ -509,7 +579,9 @@ export default function CreatorSocialHubPage() {
                       <strong>{comment.author.displayName}</strong>
                       <time dateTime={comment.createdAt}>{dateTime(comment.createdAt)}</time>
                       <p>{comment.body}</p>
-                      {!comment.author.ownedByRequester ? (
+                      {comment.author.ownedByRequester ? (
+                        <button className={styles.buttonQuiet} type="button" disabled={busy} onClick={() => void deleteComment(comment)}>Remover comentário</button>
+                      ) : (
                         <SocialSafetyAction
                           target={{
                             resourceType: "creator_comment",
@@ -519,7 +591,7 @@ export default function CreatorSocialHubPage() {
                           }}
                           onChanged={() => afterCommentBlock(comment.contentId)}
                         />
-                      ) : null}
+                      )}
                     </article>
                   ))}
                 </div>
@@ -608,7 +680,9 @@ export default function CreatorSocialHubPage() {
                               <time dateTime={message.createdAt}>{dateTime(message.createdAt)}</time>
                             </div>
                             <div>{message.body ?? (message.removedReason === "moderation" ? "Mensagem removida pela moderação." : "Mensagem removida pelo remetente.")}</div>
-                            {!own && message.removedReason !== "moderation" ? (
+                            {own && message.kind === "message" && !message.removedReason ? (
+                              <button className={styles.buttonQuiet} type="button" disabled={busy} onClick={() => void deleteMessage(message)}>Remover mensagem</button>
+                            ) : !own && message.removedReason !== "moderation" ? (
                               <SocialSafetyAction
                                 target={{
                                   resourceType: "creator_message",
