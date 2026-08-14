@@ -189,10 +189,16 @@ export async function registerCreatorPlayerEconomySettlementRoutes(app: FastifyI
     const actor = await requireActor(app, request);
     const competitionId = z.string().uuid().parse(request.params.competitionId);
     const body = payoutSchema.parse(request.body);
+    const payouts = body.payouts.map((payout) => ({
+      userId: payout.userId,
+      prizeMinor: payout.prizeMinor,
+      finalRank: payout.finalRank,
+      score: payout.score ?? null
+    }));
     const result = await settlement.settleCompetition({
       organizerId: actor.userId,
       competitionId,
-      payouts: body.payouts,
+      payouts,
       idempotencyKey: idempotencyKey(app, request)
     });
     return { settlement: result, signature: "Tehkné Solutions" };
