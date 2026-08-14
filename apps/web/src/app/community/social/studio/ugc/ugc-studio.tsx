@@ -278,7 +278,7 @@ export function UgcCreatorStudio() {
           supplyCap,
           unitPriceMinor: Number(editionDraft.unitPriceMinor),
           transferable: editionDraft.transferable,
-          resaleAllowed: editionDraft.resaleAllowed
+          resaleAllowed: editionDraft.transferable && editionDraft.resaleAllowed
         })
       });
       setEditionDraft(blankEdition(publishedBlueprints[0]?.id ?? ""));
@@ -378,7 +378,7 @@ export function UgcCreatorStudio() {
               ) : null}
               <label htmlFor="ugc-edition-price">Preço por unidade</label>
               <input id="ugc-edition-price" className={styles.input} type="number" min="1" step="1" value={editionDraft.unitPriceMinor} onChange={(event) => setEditionDraft((current) => ({ ...current, unitPriceMinor: event.target.value }))} />
-              <label><input type="checkbox" checked={editionDraft.transferable} onChange={(event) => setEditionDraft((current) => ({ ...current, transferable: event.target.checked }))} /> Transferível entre usuários</label>
+              <label><input type="checkbox" checked={editionDraft.transferable} onChange={(event) => setEditionDraft((current) => ({ ...current, transferable: event.target.checked, resaleAllowed: event.target.checked ? current.resaleAllowed : false }))} /> Transferível entre usuários</label>
               <label><input type="checkbox" checked={editionDraft.resaleAllowed} disabled={!editionDraft.transferable} onChange={(event) => setEditionDraft((current) => ({ ...current, resaleAllowed: event.target.checked }))} /> Revenda permitida</label>
               <div className={styles.actions}>
                 <button className={styles.button} type="button" disabled={busy || !editionReady} onClick={() => void createEdition()}>Criar edição</button>
