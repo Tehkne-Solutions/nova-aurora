@@ -40,6 +40,31 @@ type BlockedUser = Readonly<{
   blockedAt: string;
 }>;
 
+type SafetyActivity = Readonly<{
+  id: string;
+  type: string;
+  title: string;
+  entity: { type: string; id: string | null };
+  metadata: Record<string, unknown>;
+  createdAt: string;
+  readAt: string | null;
+}>;
+
+type CreatorAppeal = Readonly<{
+  id: string;
+  report_id: string;
+  reason: string;
+  status: "pending" | "in_review" | "upheld" | "overturned";
+  decision_reason: string | null;
+  created_at: string;
+  updated_at: string;
+  resolved_at: string | null;
+  resource_type: string;
+  resource_id: string;
+  category: string;
+  priority: string;
+}>;
+
 const reportCategories: readonly Readonly<{ value: ReportCategory; label: string }>[] = [
   { value: "spam", label: "Spam" },
   { value: "fraud", label: "Fraude" },
@@ -74,6 +99,32 @@ async function api<T>(path: string, init?: RequestInit): Promise<T> {
     throw new Error(detail);
   }
   return response.json() as Promise<T>;
+}
+
+function dateTime(value: string | null | undefined): string {
+  if (!value) return "—";
+  return new Intl.DateTimeFormat("pt-BR", { dateStyle: "short", timeStyle: "short" }).format(new Date(value));
+}
+
+function resourceLabel(resourceType: unknown): string {
+  const labels: Record<string, string> = {
+    creator_content: "Conteúdo",
+    creator_channel: "Canal",
+    creator_comment: "Comentário",
+    creator_message: "Mensagem privada",
+    ugc_blueprint: "UGC",
+    ad_campaign: "Campanha",
+    ad_surface: "Superfície publicitária",
+    competition: "Competição"
+  };
+  return labels[String(resourceType)] ?? String(resourceType ?? "Recurso");
+}
+
+function appealStatusLabel(status: CreatorAppeal["status"]): string {
+  if (status === "pending") return "Aguardando revisão";
+  if (status === "in_review") return "Em revisão";
+  if (status === "overturned") return "Apelação acolhida";
+  return "Decisão mantida";
 }
 
 function reportRequest(target: SocialSafetyTarget, category: ReportCategory, reason: string): Promise<unknown> {
@@ -216,26 +267,36 @@ export function SocialSafetyAction({
 
 export function SocialSafetyPanel() {
   const [blockedUsers, setBlockedUsers] = useState<BlockedUser[]>([]);
+  const [safetyActivities, setSafetyActivities] = useState<SafetyActivity[]>([]);
+  const [appeals, setAppeals] = useState<CreatorAppeal[]>([]);
+  const [appealReasons, setAppealReasons] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [busyUserId, setBusyUserId] = useState<string | null>(null);
+  const [busyReportId, setBusyReportId] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const loadBlockedUsers = useCallback(async () => {
+  const loadSafetyData = useCallback(async () => {
     setError(null);
     try {
-      const result = await api<{ blockedUsers: BlockedUser[] }>("/v1/creator/blocks/me?limit=100");
-      setBlockedUsers(result.blockedUsers);
+      const [blockResult, activityResult, appealResult] = await Promise.all([
+        api<{ blockedUsers: BlockedUser[] }>("/v1/creator/blocks/me?limit=100"),
+        api<{ items: SafetyActivity[] }>("/v1/creator/activity?category=safety&limit=100"),
+        api<{ appeals: CreatorAppeal[] }>("/v1/creator-moderation/appeals/me?limit=100")
+      ]);
+      setBlockedUsers(blockResult.blockedUsers);
+      setSafetyActivities(activityResult.items);
+      setAppeals(appealResult.appeals);
     } catch (loadError) {
-      setError(loadError instanceof Error ? loadError.message : "Não foi possível carregar as contas bloqueadas.");
+      setError(loadError instanceof Error ? loadError.message : "Não foi possível carregar a central de segurança.");
     } finally {
       setLoading(false);
     }
   }, []);
 
   useEffect(() => {
-    void loadBlockedUsers();
-  }, [loadBlockedUsers]);
+    void loadSafetyData();
+  }, [loadSafetyData]);
 
   async function unblock(user: BlockedUser) {
     setBusyUserId(user.userId);
@@ -243,7 +304,7 @@ export function SocialSafetyPanel() {
     setError(null);
     try {
       await api(`/v1/creator/users/${user.userId}/block`, { method: "DELETE" });
-      await loadBlockedUsers();
+      await loadSafetyData();
       setNotice(`${user.displayName} foi desbloqueado. Conversas anteriores não são reabertas automaticamente.`);
     } catch (unblockError) {
       setError(unblockError instanceof Error ? unblockError.message : "Não foi possível desbloquear a conta.");
@@ -252,14 +313,41 @@ export function SocialSafetyPanel() {
     }
   }
 
+  async function fileAppeal(reportId: string) {
+    const reason = (appealReasons[reportId] ?? "").trim();
+    if (reason.length < 10) {
+      setError("Explique a apelação com pelo menos 10 caracteres.");
+      return;
+    }
+    setBusyReportId(reportId);
+    setNotice(null);
+    setError(null);
+    try {
+      await api(`/v1/creator-moderation/reports/${reportId}/appeal`, {
+        method: "POST",
+        body: JSON.stringify({ reason })
+      });
+      setAppealReasons((current) => ({ ...current, [reportId]: "" }));
+      await loadSafetyData();
+      setNotice("Apelação registrada para revisão independente.");
+    } catch (appealError) {
+      setError(appealError instanceof Error ? appealError.message : "Não foi possível registrar a apelação.");
+    } finally {
+      setBusyReportId(null);
+    }
+  }
+
+  const restrictionActivities = safetyActivities.filter((activity) => activity.type === "moderation_restricted");
+  const appealByReport = new Map(appeals.map((appeal) => [appeal.report_id, appeal]));
+
   return (
     <section aria-labelledby="social-safety-title">
       <div className={styles.sectionHeader}>
         <div>
-          <h2 id="social-safety-title">Contas bloqueadas</h2>
+          <h2 id="social-safety-title">{loading ? "Carregando segurança..." : "Contas bloqueadas"}</h2>
           <p>Bloqueios interrompem interações sociais e fecham conversas abertas sem apagar evidências de moderação.</p>
         </div>
-        <button className={styles.buttonQuiet} type="button" disabled={loading} onClick={() => void loadBlockedUsers()}>
+        <button className={styles.buttonQuiet} type="button" disabled={loading} onClick={() => void loadSafetyData()}>
           Atualizar
         </button>
       </div>
@@ -267,23 +355,115 @@ export function SocialSafetyPanel() {
       {notice ? <p className={styles.notice} role="status">{notice}</p> : null}
       {error ? <p className={styles.error} role="alert">{error}</p> : null}
 
-      {loading ? <div className={styles.empty}>Carregando bloqueios...</div> : blockedUsers.length === 0 ? (
-        <div className={styles.empty}>Você não bloqueou nenhuma conta.</div>
-      ) : (
-        <div className={styles.activityList}>
-          {blockedUsers.map((user) => (
-            <article className={styles.activity} key={user.userId}>
+      {!loading ? (
+        <>
+          {blockedUsers.length === 0 ? (
+            <div className={styles.empty}>Você não bloqueou nenhuma conta.</div>
+          ) : (
+            <div className={styles.activityList}>
+              {blockedUsers.map((user) => (
+                <article className={styles.activity} key={user.userId}>
+                  <div>
+                    <h3>{user.displayName}</h3>
+                    <p>Bloqueado em {dateTime(user.blockedAt)}</p>
+                  </div>
+                  <button className={styles.buttonQuiet} type="button" disabled={busyUserId === user.userId} onClick={() => void unblock(user)}>
+                    Desbloquear
+                  </button>
+                </article>
+              ))}
+            </div>
+          )}
+
+          <section className={styles.detail} aria-labelledby="social-appeals-title">
+            <div className={styles.sectionHeader}>
               <div>
-                <h3>{user.displayName}</h3>
-                <p>Bloqueado em {new Intl.DateTimeFormat("pt-BR", { dateStyle: "short", timeStyle: "short" }).format(new Date(user.blockedAt))}</p>
+                <h3 id="social-appeals-title">Restrições e apelações</h3>
+                <p>Decisões da Creator Economy podem ser contestadas aqui sem copiar IDs manualmente.</p>
               </div>
-              <button className={styles.buttonQuiet} type="button" disabled={busyUserId === user.userId} onClick={() => void unblock(user)}>
-                Desbloquear
-              </button>
-            </article>
-          ))}
-        </div>
-      )}
+            </div>
+
+            {restrictionActivities.length === 0 ? (
+              <div className={styles.empty}>Nenhuma restrição apelável registrada na sua atividade.</div>
+            ) : (
+              <div className={styles.activityList}>
+                {restrictionActivities.map((activity) => {
+                  const reportId = String(activity.metadata.reportId ?? activity.entity.id ?? "");
+                  const resourceType = activity.metadata.resourceType;
+                  const resourceId = String(activity.metadata.resourceId ?? "");
+                  const existingAppeal = appealByReport.get(reportId);
+                  const reason = appealReasons[reportId] ?? "";
+                  const reasonId = `appeal-reason-${activity.id}`;
+                  return (
+                    <article className={styles.activity} key={activity.id}>
+                      <div>
+                        <h4>{resourceLabel(resourceType)} restringido</h4>
+                        <p>Decisão registrada em {dateTime(activity.createdAt)}.</p>
+                        {resourceId ? <p className={styles.code}>Recurso {resourceId}</p> : null}
+                        {existingAppeal ? (
+                          <>
+                            <p><strong>{appealStatusLabel(existingAppeal.status)}</strong> · enviada em {dateTime(existingAppeal.created_at)}</p>
+                            {existingAppeal.decision_reason ? <p>Fundamentação: {existingAppeal.decision_reason}</p> : null}
+                          </>
+                        ) : (
+                          <div className={styles.formRow}>
+                            <label htmlFor={reasonId}>Justificativa da apelação</label>
+                            <textarea
+                              id={reasonId}
+                              className={styles.textarea}
+                              minLength={10}
+                              maxLength={1000}
+                              value={reason}
+                              disabled={busyReportId === reportId}
+                              onChange={(event) => setAppealReasons((current) => ({
+                                ...current,
+                                [reportId]: event.target.value
+                              }))}
+                              placeholder="Explique por que a decisão deve ser revista por outra pessoa."
+                            />
+                            <div className={styles.actions}>
+                              <button
+                                className={styles.button}
+                                type="button"
+                                disabled={!reportId || busyReportId === reportId || reason.trim().length < 10}
+                                onClick={() => void fileAppeal(reportId)}
+                              >
+                                Enviar apelação
+                              </button>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </article>
+                  );
+                })}
+              </div>
+            )}
+          </section>
+
+          {appeals.length > 0 ? (
+            <section className={styles.detail} aria-labelledby="appeal-history-title">
+              <div className={styles.sectionHeader}>
+                <div>
+                  <h3 id="appeal-history-title">Histórico de apelações</h3>
+                  <p>Acompanhe revisão, resultado e fundamentação das decisões.</p>
+                </div>
+              </div>
+              <div className={styles.activityList}>
+                {appeals.map((appeal) => (
+                  <article className={styles.activity} key={appeal.id}>
+                    <div>
+                      <h4>{resourceLabel(appeal.resource_type)} · {appealStatusLabel(appeal.status)}</h4>
+                      <p>Enviada em {dateTime(appeal.created_at)}{appeal.resolved_at ? ` · resolvida em ${dateTime(appeal.resolved_at)}` : ""}</p>
+                      {appeal.decision_reason ? <p>Fundamentação: {appeal.decision_reason}</p> : null}
+                    </div>
+                  </article>
+                ))}
+              </div>
+            </section>
+          ) : null}
+        </>
+      ) : null}
     </section>
   );
 }
