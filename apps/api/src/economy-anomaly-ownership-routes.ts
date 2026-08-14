@@ -8,6 +8,7 @@ import { registerCreatorPlayerEconomyAppealRoutes } from "./creator-player-econo
 import { registerCreatorPlayerEconomyDiscoveryRoutes } from "./creator-player-economy-discovery-routes.js";
 import { registerCreatorPlayerEconomyModerationRoutes } from "./creator-player-economy-moderation-routes.js";
 import { registerCreatorPlayerEconomySettlementRoutes } from "./creator-player-economy-settlement-routes.js";
+import { registerCreatorSocialAbuseControls } from "./creator-social-abuse-controls.js";
 import { registerCreatorSocialCommentAppealRoutes } from "./creator-social-comment-appeal-routes.js";
 import { registerCreatorSocialCommentRoutes } from "./creator-social-comment-routes.js";
 import { registerEconomyAnomalyOperationsDashboardRoutes } from "./economy-anomaly-operations-dashboard-routes.js";
@@ -31,6 +32,7 @@ function ownershipView(row:Record<string,unknown>){
 }
 
 export async function registerEconomyAnomalyOwnershipRoutes(app:FastifyInstance):Promise<void>{
+  await registerCreatorSocialAbuseControls(app);
   await registerCreatorPlayerEconomyRoutes(app);
   await registerCreatorPlayerEconomySettlementRoutes(app);
   await registerCreatorPlayerEconomyDiscoveryRoutes(app);
