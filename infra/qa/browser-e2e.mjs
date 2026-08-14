@@ -139,16 +139,18 @@ async function waitForHeading(selector, expected, context, timeoutMs = 15_000) {
   }, timeoutMs);
 }
 
-async function clickButtonStarting(label) {
+async function clickHubTab(label) {
   const clicked = await evaluate(`(() => {
-    const button = [...document.querySelectorAll('button')].find((node) =>
+    const navigation = document.querySelector('nav[aria-label="Áreas do hub social"]');
+    if (!navigation) return false;
+    const button = [...navigation.querySelectorAll('button')].find((node) =>
       (node.textContent || '').trim().startsWith(${JSON.stringify(label)})
     );
     if (!button) return false;
     button.click();
     return true;
   })()`);
-  if (!clicked) throw new Error(`Botão ${label} não encontrado no Hub Social.`);
+  if (!clicked) throw new Error(`Aba ${label} não encontrada na navegação do Hub Social.`);
 }
 
 function auditExpression() {
@@ -264,7 +266,7 @@ for (const path of [
     ];
     const tabEvidence = [];
     for (const [label, expectedHeading] of tabs) {
-      await clickButtonStarting(label);
+      await clickHubTab(label);
       const state = await waitForHeading("h2", expectedHeading, `Hub Social · ${label}`);
       tabEvidence.push({ label, heading: state.text });
     }
