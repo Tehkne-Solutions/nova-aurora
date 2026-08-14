@@ -1,4 +1,4 @@
-import type { FastifyInstance } from "fastify";
+import type { FastifyInstance, FastifyRequest } from "fastify";
 import { z } from "zod";
 import { db } from "@nova-aurora/database";
 import { requireActor, requireRole } from "./auth-context.js";
@@ -26,11 +26,28 @@ const summaryQuery = z.object({
   limit: z.coerce.number().int().min(1).max(100).default(20)
 });
 
+function rateActionForRequest(request: FastifyRequest): SocialRateAction | undefined {
+  const routeUrl = request.routeOptions.url;
+  if (!routeUrl) return undefined;
+  const routeKey = `${request.method.toUpperCase()} ${routeUrl}`;
+  const action = rateActionByRoute[routeKey];
+  if (action !== "moderation_report") return action;
+
+  const body = request.body;
+  if (
+    body &&
+    typeof body === "object" &&
+    "resourceType" in body &&
+    (body as { resourceType?: unknown }).resourceType === "creator_comment"
+  ) {
+    return "comment_report";
+  }
+  return action;
+}
+
 export async function registerCreatorSocialAbuseControls(app: FastifyInstance): Promise<void> {
   app.addHook("preHandler", async (request, reply) => {
-    const routeUrl = request.routeOptions.url;
-    if (!routeUrl) return;
-    const action = rateActionByRoute[`${request.method.toUpperCase()} ${routeUrl}`];
+    const action = rateActionForRequest(request);
     if (!action) return;
     const actor = await requireActor(app, request);
     await consumeSocialRateLimit(app, reply, actor.userId, action);
