@@ -69,6 +69,25 @@ CREATE TABLE IF NOT EXISTS creator_private_moderation_access (
 CREATE INDEX IF NOT EXISTS creator_private_moderation_access_report_idx
   ON creator_private_moderation_access(report_id,occurred_at ASC,id ASC);
 
+CREATE OR REPLACE FUNCTION close_creator_dm_threads_on_block()
+RETURNS trigger
+LANGUAGE plpgsql
+AS $$
+BEGIN
+  UPDATE creator_dm_threads
+  SET status='closed',closed_at=now(),updated_at=now()
+  WHERE status IN ('pending','active')
+    AND user_low_id=LEAST(NEW.blocker_user_id,NEW.blocked_user_id)
+    AND user_high_id=GREATEST(NEW.blocker_user_id,NEW.blocked_user_id);
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS creator_user_blocks_close_dm_threads ON creator_user_blocks;
+CREATE TRIGGER creator_user_blocks_close_dm_threads
+AFTER INSERT ON creator_user_blocks
+FOR EACH ROW EXECUTE FUNCTION close_creator_dm_threads_on_block();
+
 ALTER TABLE creator_economy_reports
   DROP CONSTRAINT IF EXISTS creator_economy_reports_resource_type_check;
 ALTER TABLE creator_economy_reports
