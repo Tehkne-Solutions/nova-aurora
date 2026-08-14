@@ -125,6 +125,32 @@ async function navigate(path) {
   await waitReady();
 }
 
+async function waitForHeading(selector, expected, context, timeoutMs = 15_000) {
+  return retry(async () => {
+    const state = await evaluate(`(() => ({
+      text: document.querySelector(${JSON.stringify(selector)})?.textContent?.trim() || '',
+      alert: document.querySelector('[role=alert]')?.textContent?.trim() || ''
+    }))()`);
+    if (state.alert) throw new Error(`${context} exibiu erro operacional: ${state.alert}`);
+    if (!String(state.text).includes(expected)) {
+      throw new Error(`${context} ainda não renderizou ${expected}. Atual: ${state.text || "vazio"}`);
+    }
+    return state;
+  }, timeoutMs);
+}
+
+async function clickButtonStarting(label) {
+  const clicked = await evaluate(`(() => {
+    const button = [...document.querySelectorAll('button')].find((node) =>
+      (node.textContent || '').trim().startsWith(${JSON.stringify(label)})
+    );
+    if (!button) return false;
+    button.click();
+    return true;
+  })()`);
+  if (!clicked) throw new Error(`Botão ${label} não encontrado no Hub Social.`);
+}
+
 function auditExpression() {
   return `(() => {
     const issues = [];
@@ -148,7 +174,7 @@ function auditExpression() {
   })()`;
 }
 
-const report = { pages: [], login: null, exceptions };
+const report = { pages: [], login: null, socialHub: null, exceptions };
 await command("Page.enable");
 await command("Runtime.enable");
 
@@ -185,8 +211,21 @@ await retry(async () => {
 }, 20_000);
 report.login = { path: await evaluate("location.pathname"), authenticated: true };
 
-for (const path of ["/account", "/release", "/trust", "/feedback", "/beta-insights"]) {
+for (const path of [
+  "/account",
+  "/release",
+  "/trust",
+  "/feedback",
+  "/beta-insights",
+  "/community",
+  "/community/social"
+]) {
   await navigate(path);
+
+  if (path === "/community/social") {
+    await waitForHeading("h1", "Hub Social", "Hub Social");
+  }
+
   const audit = await evaluate(auditExpression());
   report.pages.push(audit);
   if (audit.path !== path) {
@@ -209,6 +248,27 @@ for (const path of ["/account", "/release", "/trust", "/feedback", "/beta-insigh
     if (!restricted && !operational) {
       throw new Error("Central de suporte e rollout não renderizou.");
     }
+  }
+  if (path === "/community") {
+    const heading = await evaluate("document.querySelector('h1')?.textContent || ''");
+    if (!String(heading).includes("beta aprende em público")) {
+      throw new Error("Central de comunicados não renderizou.");
+    }
+  }
+  if (path === "/community/social") {
+    const tabs = [
+      ["Descobrir", "Descobrir a cidade criativa"],
+      ["Atividade", "Activity Inbox"],
+      ["Mensagens", "Mensagens privadas"],
+      ["Meu impacto", "Meu impacto em 30 dias"]
+    ];
+    const tabEvidence = [];
+    for (const [label, expectedHeading] of tabs) {
+      await clickButtonStarting(label);
+      const state = await waitForHeading("h2", expectedHeading, `Hub Social · ${label}`);
+      tabEvidence.push({ label, heading: state.text });
+    }
+    report.socialHub = { path, tabs: tabEvidence };
   }
 }
 
@@ -233,4 +293,4 @@ if (child.exitCode === null) {
 await retry(async () => {
   await rm(profile, { recursive: true, force: true });
 }, 5_000);
-console.log(JSON.stringify({ status: "passed", pages: report.pages.length, signature: "Tehkné Solutions" }));
+console.log(JSON.stringify({ status: "passed", pages: report.pages.length, socialHubTabs: report.socialHub?.tabs.length ?? 0, signature: "Tehkné Solutions" }));
