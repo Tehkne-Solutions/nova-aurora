@@ -32,10 +32,18 @@ jobs:
       DATA_ENCRYPTION_KEY: ci-data-encryption-key-12345678901234567890
       ALLOW_RECOVERY_TOKEN_RESPONSE: "true"
       PUBLIC_WEB_URL: http://localhost:3000
+      PUBLIC_API_URL: https://api.nova-aurora.example.com
       PUBLIC_REGISTRATION_MODE: open
       TRANSACTIONAL_EMAIL_FROM: Nova Aurora CI <no-reply@nova-aurora.local>
       TRANSACTIONAL_EMAIL_TOKEN: ci-transactional-email-token-1234567890
       WEB_ORIGINS: http://localhost:3000,http://127.0.0.1:3000
+      OBJECT_STORAGE_ENABLED: "true"
+      OBJECT_STORAGE_ENDPOINT: http://127.0.0.1:8333
+      OBJECT_STORAGE_BUCKET: nova-aurora-ugc
+      OBJECT_STORAGE_REGION: us-east-1
+      OBJECT_STORAGE_ACCESS_KEY: nova-aurora-ci
+      OBJECT_STORAGE_SECRET_KEY: ci-object-storage-secret-key-1234567890
+      OBJECT_STORAGE_UPLOAD_SIGNING_KEY: ci-upload-signing-key-12345678901234567890
     steps:
       - uses: actions/checkout@v6
 
@@ -46,6 +54,26 @@ jobs:
         with: { node-version: 22, cache: pnpm }
 
       - run: pnpm install --frozen-lockfile
+
+      - name: Start S3-compatible object storage
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          docker run -d --name nova-aurora-storage-ci \
+            -p 8333:8333 \
+            -e AWS_ACCESS_KEY_ID="$OBJECT_STORAGE_ACCESS_KEY" \
+            -e AWS_SECRET_ACCESS_KEY="$OBJECT_STORAGE_SECRET_KEY" \
+            -e S3_BUCKET="$OBJECT_STORAGE_BUCKET" \
+            chrislusf/seaweedfs:4.29 mini -dir=/data
+          for attempt in $(seq 1 60); do
+            if curl --silent --output /dev/null http://127.0.0.1:8333/; then
+              exit 0
+            fi
+            sleep 1
+          done
+          docker logs nova-aurora-storage-ci || true
+          exit 1
+
       - run: pnpm db:migrate
 
       - name: Typecheck
@@ -159,7 +187,7 @@ jobs:
       - name: Validate production Compose
         run: |
           mkdir -p infra/secrets
-          for secret in postgres_password redis_password internal_api_token data_encryption_key transactional_email_token bootstrap_admin_password bootstrap_bob_password grafana_admin_password; do
+          for secret in postgres_password redis_password internal_api_token data_encryption_key transactional_email_token bootstrap_admin_password bootstrap_bob_password grafana_admin_password object_storage_access_key object_storage_secret_key object_storage_upload_signing_key; do
             printf 'ci-%s-123456789012345678901234567890\n' "$secret" > "infra/secrets/$secret.txt"
           done
           docker compose --env-file .env.production.example -f infra/docker-compose.prod.yml config > compose.resolved.yml
@@ -231,3 +259,7 @@ jobs:
             build.log
             api-smoke.log
             web-smoke.log
+
+      - name: Stop object storage
+        if: always()
+        run: docker rm -f nova-aurora-storage-ci || true
