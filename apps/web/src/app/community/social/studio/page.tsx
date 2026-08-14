@@ -17,6 +17,7 @@ export default function CreatorStudioPage() {
             </p>
           </div>
           <div className={styles.headerActions}>
+            <Link className={styles.link} href="/community/social/studio/ugc">UGC Studio</Link>
             <Link className={styles.link} href="/community/social">Hub Social</Link>
             <Link className={styles.link} href="/community">Comunicados</Link>
           </div>
