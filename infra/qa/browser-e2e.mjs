@@ -176,7 +176,7 @@ function auditExpression() {
   })()`;
 }
 
-const report = { pages: [], login: null, socialHub: null, creatorStudio: null, exceptions };
+const report = { pages: [], login: null, socialHub: null, creatorStudio: null, ugcStudio: null, exceptions };
 await command("Page.enable");
 await command("Runtime.enable");
 
@@ -221,7 +221,8 @@ for (const path of [
   "/beta-insights",
   "/community",
   "/community/social",
-  "/community/social/studio"
+  "/community/social/studio",
+  "/community/social/studio/ugc"
 ]) {
   await navigate(path);
 
@@ -232,6 +233,11 @@ for (const path of [
     await waitForHeading("h1", "Creator Studio", "Creator Studio");
     const readyState = await waitForHeading("h3", "Creator Studio", "Creator Studio · dados editoriais");
     report.creatorStudio = { path, heading: readyState.text, ready: true };
+  }
+  if (path === "/community/social/studio/ugc") {
+    await waitForHeading("h1", "UGC Creator Studio", "UGC Creator Studio");
+    const readyState = await waitForHeading("h3", "UGC Creator Studio", "UGC Creator Studio · dados de blueprint/edição/vendas");
+    report.ugcStudio = { path, heading: readyState.text, ready: true };
   }
 
   const audit = await evaluate(auditExpression());
@@ -307,5 +313,6 @@ console.log(JSON.stringify({
   pages: report.pages.length,
   socialHubTabs: report.socialHub?.tabs.length ?? 0,
   creatorStudioReady: report.creatorStudio?.ready ?? false,
+  ugcStudioReady: report.ugcStudio?.ready ?? false,
   signature: "Tehkné Solutions"
 }));
