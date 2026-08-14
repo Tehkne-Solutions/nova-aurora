@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { db } from "@nova-aurora/database";
-import { requireActor } from "./auth-context.js";
+import { requireActor, requireRole } from "./auth-context.js";
 
 const economySql = db();
 
@@ -14,6 +14,50 @@ const pageQuery = z.object({
   limit: z.coerce.number().int().min(1).max(100).default(30),
   offset: z.coerce.number().int().min(0).default(0)
 });
+
+const categorySchema = z.enum([
+  "spam",
+  "fraud",
+  "scam",
+  "harassment",
+  "hate",
+  "sexual",
+  "violence",
+  "illegal",
+  "ip",
+  "misleading_ad",
+  "unsafe_ugc",
+  "other"
+]);
+
+const reportSchema = z.object({
+  category: categorySchema,
+  reason: z.string().trim().min(10).max(1000)
+});
+
+const moderationReasonSchema = z.object({
+  reason: z.string().trim().min(10).max(1000)
+});
+
+const moderationDecisionSchema = moderationReasonSchema.extend({
+  outcome: z.enum(["dismissed", "restricted"])
+});
+
+const moderationQueueQuery = z.object({
+  status: z.enum(["open", "in_review", "resolved", "dismissed"]).optional(),
+  priority: z.enum(["low", "medium", "high", "critical"]).optional(),
+  limit: z.coerce.number().int().min(1).max(200).default(50),
+  offset: z.coerce.number().int().min(0).default(0)
+});
+
+type Category = z.infer<typeof categorySchema>;
+
+function priorityFor(category: Category): "low" | "medium" | "high" | "critical" {
+  if (category === "illegal") return "critical";
+  if (["fraud", "scam", "hate", "sexual", "violence"].includes(category)) return "high";
+  if (["harassment", "ip", "misleading_ad", "unsafe_ugc"].includes(category)) return "medium";
+  return "low";
+}
 
 async function activeContent(contentId: string) {
   return (await economySql`
@@ -119,6 +163,65 @@ export async function registerCreatorSocialCommentRoutes(app: FastifyInstance): 
     return { commentId, deleted: true, signature: "Tehkné Solutions" };
   });
 
+  app.post<{ Params: { commentId: string } }>("/v1/creator/comments/:commentId/report", async (request) => {
+    const actor = await requireActor(app, request);
+    const commentId = z.string().uuid().parse(request.params.commentId);
+    const body = reportSchema.parse(request.body);
+    const comment = (await economySql`
+      SELECT id,author_user_id,status FROM creator_content_comments WHERE id=${commentId}::uuid
+    `)[0];
+    if (!comment || String(comment.status) !== "active") {
+      throw app.httpErrors.notFound("Comentário ativo não encontrado.");
+    }
+    if (String(comment.author_user_id) === actor.userId) {
+      throw app.httpErrors.badRequest("Não é possível denunciar o próprio comentário.");
+    }
+    const priority = priorityFor(body.category);
+    const id = randomUUID();
+    const inserted = (await economySql`
+      INSERT INTO creator_economy_reports(
+        id,reporter_user_id,resource_type,resource_id,category,priority,reason
+      ) VALUES(
+        ${id}::uuid,${actor.userId}::uuid,'creator_comment',${commentId}::uuid,
+        ${body.category},${priority},${body.reason}
+      )
+      ON CONFLICT(reporter_user_id,resource_type,resource_id)
+        WHERE status IN ('open','in_review')
+      DO NOTHING
+      RETURNING id,status,priority,created_at
+    `)[0];
+    if (inserted) {
+      return {
+        report: {
+          id: String(inserted.id),
+          status: String(inserted.status),
+          priority: String(inserted.priority),
+          createdAt: new Date(String(inserted.created_at)).toISOString()
+        },
+        signature: "Tehkné Solutions"
+      };
+    }
+    const prior = (await economySql`
+      SELECT id,status,priority,created_at
+      FROM creator_economy_reports
+      WHERE reporter_user_id=${actor.userId}::uuid
+        AND resource_type='creator_comment'
+        AND resource_id=${commentId}::uuid
+        AND status IN ('open','in_review')
+      ORDER BY created_at DESC LIMIT 1
+    `)[0];
+    return {
+      report: {
+        id: String(prior!.id),
+        status: String(prior!.status),
+        priority: String(prior!.priority),
+        createdAt: new Date(String(prior!.created_at)).toISOString(),
+        duplicateSuppressed: true
+      },
+      signature: "Tehkné Solutions"
+    };
+  });
+
   app.post<{ Params: { userId: string } }>("/v1/creator/users/:userId/block", async (request) => {
     const actor = await requireActor(app, request);
     const userId = z.string().uuid().parse(request.params.userId);
@@ -183,6 +286,114 @@ export async function registerCreatorSocialCommentRoutes(app: FastifyInstance): 
       pagination: query,
       signature: "Tehkné Solutions"
     };
+  });
+
+  app.get("/v1/admin/creator-moderation/comment-reports", async (request) => {
+    await requireRole(app, request, ["platform-admin", "municipal-admin"]);
+    const query = moderationQueueQuery.parse(request.query);
+    const rows = await economySql`
+      SELECT report.*,comment.content_id,comment.author_user_id,comment.body comment_body,comment.status comment_status
+      FROM creator_economy_reports report
+      JOIN creator_content_comments comment ON comment.id=report.resource_id
+      WHERE report.resource_type='creator_comment'
+        AND (${query.status ?? null}::text IS NULL OR report.status=${query.status ?? null})
+        AND (${query.priority ?? null}::text IS NULL OR report.priority=${query.priority ?? null})
+      ORDER BY
+        CASE report.priority WHEN 'critical' THEN 4 WHEN 'high' THEN 3 WHEN 'medium' THEN 2 ELSE 1 END DESC,
+        report.created_at ASC,report.id ASC
+      LIMIT ${query.limit} OFFSET ${query.offset}
+    `;
+    return { reports: rows, pagination: query, signature: "Tehkné Solutions" };
+  });
+
+  app.post<{ Params: { reportId: string } }>("/v1/admin/creator-moderation/comment-reports/:reportId/claim", async (request) => {
+    const identity = await requireRole(app, request, ["platform-admin"]);
+    const reportId = z.string().uuid().parse(request.params.reportId);
+    const body = moderationReasonSchema.parse(request.body);
+    const result = await economySql.begin("isolation level serializable", async (tx) => {
+      const report = (await tx`
+        SELECT * FROM creator_economy_reports
+        WHERE id=${reportId}::uuid AND resource_type='creator_comment'
+        FOR UPDATE
+      `)[0];
+      if (!report) throw app.httpErrors.notFound("Denúncia de comentário não encontrada.");
+      if (!["open", "in_review"].includes(String(report.status))) {
+        throw app.httpErrors.conflict("Denúncia já encerrada.");
+      }
+      if (report.assigned_to && String(report.assigned_to) !== identity.userId) {
+        throw app.httpErrors.conflict("Denúncia já atribuída a outro moderador.");
+      }
+      if (String(report.assigned_to ?? "") === identity.userId && String(report.status) === "in_review") {
+        return { reportId, status: "in_review" as const, claimed: false };
+      }
+      await tx`
+        UPDATE creator_economy_reports
+        SET status='in_review',assigned_to=${identity.userId}::uuid,updated_at=now()
+        WHERE id=${reportId}::uuid
+      `;
+      await tx`
+        INSERT INTO creator_economy_moderation_actions(
+          id,report_id,resource_type,resource_id,actor_user_id,action,reason
+        ) VALUES(
+          ${randomUUID()}::uuid,${reportId}::uuid,'creator_comment',${String(report.resource_id)}::uuid,
+          ${identity.userId}::uuid,'claimed',${body.reason}
+        )
+      `;
+      return { reportId, status: "in_review" as const, claimed: true };
+    });
+    return { moderation: result, signature: "Tehkné Solutions" };
+  });
+
+  app.post<{ Params: { reportId: string } }>("/v1/admin/creator-moderation/comment-reports/:reportId/decide", async (request) => {
+    const identity = await requireRole(app, request, ["platform-admin"]);
+    const reportId = z.string().uuid().parse(request.params.reportId);
+    const body = moderationDecisionSchema.parse(request.body);
+    const result = await economySql.begin("isolation level serializable", async (tx) => {
+      const report = (await tx`
+        SELECT * FROM creator_economy_reports
+        WHERE id=${reportId}::uuid AND resource_type='creator_comment'
+        FOR UPDATE
+      `)[0];
+      if (!report) throw app.httpErrors.notFound("Denúncia de comentário não encontrada.");
+      if (String(report.status) !== "in_review") {
+        throw app.httpErrors.conflict("Denúncia precisa estar em revisão.");
+      }
+      if (String(report.assigned_to ?? "") !== identity.userId) {
+        throw app.httpErrors.conflict("A decisão deve ser feita pelo moderador responsável.");
+      }
+      const commentId = String(report.resource_id);
+      const comment = (await tx`
+        SELECT status FROM creator_content_comments WHERE id=${commentId}::uuid FOR UPDATE
+      `)[0];
+      if (!comment) throw app.httpErrors.notFound("Comentário não encontrado.");
+      const previousStatus = String(comment.status);
+      const nextStatus = body.outcome === "restricted"
+        ? (previousStatus === "deleted" ? "deleted" : "rejected")
+        : previousStatus;
+      if (body.outcome === "restricted" && previousStatus !== "deleted") {
+        await tx`
+          UPDATE creator_content_comments SET status='rejected',updated_at=now()
+          WHERE id=${commentId}::uuid
+        `;
+      }
+      const reportStatus = body.outcome === "restricted" ? "resolved" : "dismissed";
+      const action = body.outcome === "restricted" ? "restricted" : "dismissed";
+      await tx`
+        UPDATE creator_economy_reports
+        SET status=${reportStatus},updated_at=now(),resolved_at=now()
+        WHERE id=${reportId}::uuid
+      `;
+      await tx`
+        INSERT INTO creator_economy_moderation_actions(
+          id,report_id,resource_type,resource_id,actor_user_id,action,previous_status,next_status,reason
+        ) VALUES(
+          ${randomUUID()}::uuid,${reportId}::uuid,'creator_comment',${commentId}::uuid,
+          ${identity.userId}::uuid,${action},${previousStatus},${nextStatus},${body.reason}
+        )
+      `;
+      return { reportId, status: reportStatus, action, previousStatus, nextStatus };
+    });
+    return { moderation: result, signature: "Tehkné Solutions" };
   });
 }
 
