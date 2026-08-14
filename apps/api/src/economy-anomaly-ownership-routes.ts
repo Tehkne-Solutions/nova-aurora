@@ -13,6 +13,7 @@ import { registerCreatorPrivateMessageRoutes } from "./creator-private-message-r
 import { registerCreatorSocialAbuseControls } from "./creator-social-abuse-controls.js";
 import { registerCreatorSocialCommentAppealRoutes } from "./creator-social-comment-appeal-routes.js";
 import { registerCreatorSocialCommentRoutes } from "./creator-social-comment-routes.js";
+import { registerCreatorStudioRoutes } from "./creator-studio-routes.js";
 import { registerEconomyAnomalyOperationsDashboardRoutes } from "./economy-anomaly-operations-dashboard-routes.js";
 import { registerEconomyAnomalyOwnerWorkloadRoutes } from "./economy-anomaly-owner-workload-routes.js";
 import { registerEconomyAnomalyRebalancingRoutes } from "./economy-anomaly-rebalancing-routes.js";
@@ -44,6 +45,7 @@ export async function registerEconomyAnomalyOwnershipRoutes(app:FastifyInstance)
   await registerCreatorSocialCommentAppealRoutes(app);
   await registerCreatorPrivateMessageRoutes(app);
   await registerCreatorActivityRoutes(app);
+  await registerCreatorStudioRoutes(app);
   await registerEconomyAnomalyOperationsDashboardRoutes(app);
   await registerEconomyAnomalyOwnerWorkloadRoutes(app);
   await registerEconomyAnomalyRebalancingRoutes(app);
