@@ -3,6 +3,7 @@ import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { db } from "@nova-aurora/database";
 import { requireRole } from "./auth-context.js";
+import { registerCreatorActivityRoutes } from "./creator-activity-routes.js";
 import { registerCreatorPlayerEconomyRoutes } from "./creator-player-economy-routes.js";
 import { registerCreatorPlayerEconomyAppealRoutes } from "./creator-player-economy-appeal-routes.js";
 import { registerCreatorPlayerEconomyDiscoveryRoutes } from "./creator-player-economy-discovery-routes.js";
@@ -42,6 +43,7 @@ export async function registerEconomyAnomalyOwnershipRoutes(app:FastifyInstance)
   await registerCreatorSocialCommentRoutes(app);
   await registerCreatorSocialCommentAppealRoutes(app);
   await registerCreatorPrivateMessageRoutes(app);
+  await registerCreatorActivityRoutes(app);
   await registerEconomyAnomalyOperationsDashboardRoutes(app);
   await registerEconomyAnomalyOwnerWorkloadRoutes(app);
   await registerEconomyAnomalyRebalancingRoutes(app);
