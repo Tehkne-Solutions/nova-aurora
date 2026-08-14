@@ -13,6 +13,10 @@ type ManifestRecord = Readonly<{
   created_at: string;
   updated_at: string;
   revoked_at: string | null;
+  verified_upload_id: string | null;
+  verified_upload_status: "verified" | "pending" | "rejected" | "expired" | null;
+  verified_at: string | null;
+  verified_size_bytes: number | string | null;
   blueprint_count: number | string;
   published_blueprints: number | string;
   last_blueprint_at: string | null;
@@ -81,14 +85,14 @@ export function UgcManifestIntegrityGate({ children }: { children: ReactNode }) 
         <div className={styles.sectionHeader}>
           <div>
             <h3 id="ugc-manifest-integrity-title">Integridade de manifests</h3>
-            <p>Registro da declaração do criador que vincula uma URI HTTPS a um digest SHA-256 canônico.</p>
+            <p>O registry diferencia declarações externas do criador de uploads cujos bytes foram confirmados pelo storage da plataforma.</p>
           </div>
           <button className={styles.buttonQuiet} type="button" onClick={() => void load()}>Atualizar</button>
         </div>
 
         <p className={styles.notice}>
-          Este estágio comprova apenas a declaração persistida de URI + hash. Os bytes remotos ainda não foram buscados,
-          analisados por malware nem ancorados externamente. Esses passos exigem uma camada de storage/verificação posterior.
+          Upload verificado confirma tamanho, JSON e SHA-256 após gravar e reler os bytes no object storage. Isso ainda não significa
+          análise antimalware nem ancoragem externa; essas camadas permanecem explicitamente separadas.
         </p>
 
         {!data || data.manifests.length === 0 ? (
@@ -98,17 +102,24 @@ export function UgcManifestIntegrityGate({ children }: { children: ReactNode }) 
           </div>
         ) : (
           <div className={styles.activityList}>
-            {data.manifests.map((manifest) => (
-              <article className={styles.activity} key={manifest.id}>
-                <div>
-                  <h4>{manifest.status === "declared" ? "Declaração ativa" : "Declaração revogada"}</h4>
-                  <p>{Number(manifest.blueprint_count)} blueprints vinculados · {Number(manifest.published_blueprints)} publicados</p>
-                  <p className={styles.code}>{manifest.manifest_uri}</p>
-                  <p className={styles.code}>SHA-256 {manifest.sha256}</p>
-                  <p>Atualizado em {dateTime(manifest.updated_at)}{manifest.last_blueprint_at ? ` · último blueprint em ${dateTime(manifest.last_blueprint_at)}` : ""}</p>
-                </div>
-              </article>
-            ))}
+            {data.manifests.map((manifest) => {
+              const platformVerified = Boolean(manifest.verified_upload_id && manifest.verified_upload_status === "verified");
+              return (
+                <article className={styles.activity} key={manifest.id}>
+                  <div>
+                    <h4>{platformVerified ? "Bytes verificados pela plataforma" : manifest.status === "declared" ? "Declaração externa ativa" : "Declaração revogada"}</h4>
+                    <p>
+                      <span className={styles.pill}>{platformVerified ? "Storage verificado" : "Integridade declarada"}</span>
+                      {platformVerified ? ` · ${Number(manifest.verified_size_bytes ?? 0)} bytes · ${dateTime(manifest.verified_at)}` : ""}
+                    </p>
+                    <p>{Number(manifest.blueprint_count)} blueprints vinculados · {Number(manifest.published_blueprints)} publicados</p>
+                    <p className={styles.code}>{manifest.manifest_uri}</p>
+                    <p className={styles.code}>SHA-256 {manifest.sha256}</p>
+                    <p>Atualizado em {dateTime(manifest.updated_at)}{manifest.last_blueprint_at ? ` · último blueprint em ${dateTime(manifest.last_blueprint_at)}` : ""}</p>
+                  </div>
+                </article>
+              );
+            })}
           </div>
         )}
       </section>
