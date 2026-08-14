@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { db } from "@nova-aurora/database";
@@ -9,12 +10,27 @@ type Queryable = (strings: TemplateStringsArray, ...values: any[]) => any;
 
 const categorySchema = z.enum(["decor", "furniture", "wearable", "art", "collectible", "architecture", "vehicle", "component"]);
 const tokenizationSchema = z.enum(["disabled", "eligible"]);
+const httpsManifestUriSchema = z.string().trim().min(1).max(2000).url().refine((value) => {
+  const url = new URL(value);
+  return url.protocol === "https:" && !url.username && !url.password;
+}, { message: "O manifesto precisa usar HTTPS e não pode conter credenciais na URL." });
+const sha256Schema = z.string().trim().regex(/^[0-9a-fA-F]{64}$/, "Informe um SHA-256 hexadecimal de 64 caracteres.").transform((value) => value.toLowerCase());
+
+const blueprintCreateSchema = z.object({
+  name: z.string().trim().min(1).max(160),
+  category: categorySchema,
+  version: z.number().int().positive().max(100000),
+  assetManifestUri: httpsManifestUriSchema,
+  contentHash: sha256Schema,
+  royaltyBps: z.number().int().min(0).max(5000),
+  tokenizationStatus: tokenizationSchema.default("disabled")
+});
 const blueprintEditSchema = z.object({
   name: z.string().trim().min(1).max(160).optional(),
   category: categorySchema.optional(),
   version: z.number().int().positive().max(100000).optional(),
-  assetManifestUri: z.string().trim().min(1).max(2000).optional(),
-  contentHash: z.string().trim().min(16).max(256).optional(),
+  assetManifestUri: httpsManifestUriSchema.optional(),
+  contentHash: sha256Schema.optional(),
   royaltyBps: z.number().int().min(0).max(5000).optional(),
   tokenizationStatus: tokenizationSchema.optional()
 }).refine((body) => Object.keys(body).length > 0, { message: "Informe pelo menos um campo para edição." });
@@ -31,6 +47,60 @@ async function ownedBlueprint(app: FastifyInstance, sql: Queryable, blueprintId:
 }
 
 export async function registerCreatorUgcStudioRoutes(app: FastifyInstance): Promise<void> {
+  app.post("/v1/ugc/studio/blueprints", async (request) => {
+    const actor = await requireActor(app, request);
+    const body = blueprintCreateSchema.parse(request.body);
+    const id = randomUUID();
+    const blueprint = (await economySql`
+      INSERT INTO ugc_object_blueprints(
+        id,creator_user_id,name,category,version,asset_manifest_uri,content_hash,
+        royalty_bps,status,tokenization_status
+      ) VALUES(
+        ${id}::uuid,${actor.userId}::uuid,${body.name},${body.category},${body.version},
+        ${body.assetManifestUri},${body.contentHash},${body.royaltyBps},'draft',${body.tokenizationStatus}
+      )
+      RETURNING *
+    `)[0]!;
+    return {
+      blueprint,
+      integrity: {
+        declarationId: blueprint.asset_manifest_registry_id ? String(blueprint.asset_manifest_registry_id) : null,
+        scheme: "https",
+        algorithm: "sha256",
+        remoteVerification: false
+      },
+      signature: "Tehkné Solutions"
+    };
+  });
+
+  app.get("/v1/ugc/studio/manifests/me", async (request) => {
+    const actor = await requireActor(app, request);
+    const query = listQuery.parse(request.query);
+    const rows = await economySql`
+      SELECT registry.id,registry.manifest_uri,registry.sha256,registry.status,
+        registry.created_at,registry.updated_at,registry.revoked_at,
+        count(blueprint.id)::int blueprint_count,
+        count(blueprint.id) FILTER(WHERE blueprint.status='published')::int published_blueprints,
+        max(blueprint.updated_at) last_blueprint_at
+      FROM ugc_asset_manifest_registry registry
+      LEFT JOIN ugc_object_blueprints blueprint ON blueprint.asset_manifest_registry_id=registry.id
+      WHERE registry.owner_user_id=${actor.userId}::uuid
+      GROUP BY registry.id
+      ORDER BY registry.updated_at DESC,registry.id DESC
+      LIMIT ${query.limit}
+    `;
+    return {
+      manifests: rows,
+      semantics: {
+        status: "creator-declared-integrity",
+        remoteBytesFetched: false,
+        malwareScanned: false,
+        externallyAnchored: false
+      },
+      signature: "Tehkné Solutions"
+    };
+  });
+
   app.get("/v1/ugc/studio/editions/me", async (request) => {
     const actor = await requireActor(app, request);
     const query = listQuery.parse(request.query);
@@ -40,7 +110,7 @@ export async function registerCreatorUgcStudioRoutes(app: FastifyInstance): Prom
         edition.transferable,edition.resale_allowed,edition.tokenization_eligible,
         edition.created_at,blueprint.name blueprint_name,blueprint.version blueprint_version,
         blueprint.category,blueprint.status blueprint_status,blueprint.royalty_bps,
-        blueprint.asset_manifest_uri,blueprint.content_hash
+        blueprint.asset_manifest_uri,blueprint.content_hash,blueprint.asset_manifest_registry_id
       FROM ugc_object_editions edition
       JOIN ugc_object_blueprints blueprint ON blueprint.id=edition.blueprint_id
       WHERE blueprint.creator_user_id=${actor.userId}::uuid
@@ -83,13 +153,18 @@ export async function registerCreatorUgcStudioRoutes(app: FastifyInstance): Prom
         throw app.httpErrors.conflict("Blueprint ancorado externamente é imutável.");
       }
 
+      const finalManifestUri = body.assetManifestUri ?? String(current.asset_manifest_uri);
+      const finalContentHash = body.contentHash ?? String(current.content_hash);
+      httpsManifestUriSchema.parse(finalManifestUri);
+      sha256Schema.parse(finalContentHash);
+
       const updated = (await tx`
         UPDATE ugc_object_blueprints SET
           name=${body.name ?? String(current.name)},
           category=${body.category ?? String(current.category)},
           version=${body.version ?? Number(current.version)},
-          asset_manifest_uri=${body.assetManifestUri ?? String(current.asset_manifest_uri)},
-          content_hash=${body.contentHash ?? String(current.content_hash)},
+          asset_manifest_uri=${finalManifestUri},
+          content_hash=${finalContentHash.toLowerCase()},
           royalty_bps=${body.royaltyBps ?? Number(current.royalty_bps)},
           tokenization_status=${body.tokenizationStatus ?? String(current.tokenization_status)},
           updated_at=now()
@@ -99,7 +174,16 @@ export async function registerCreatorUgcStudioRoutes(app: FastifyInstance): Prom
       return updated;
     });
 
-    return { blueprint: result, signature: "Tehkné Solutions" };
+    return {
+      blueprint: result,
+      integrity: {
+        declarationId: result.asset_manifest_registry_id ? String(result.asset_manifest_registry_id) : null,
+        scheme: "https",
+        algorithm: "sha256",
+        remoteVerification: false
+      },
+      signature: "Tehkné Solutions"
+    };
   });
 
   app.post<{ Params: { blueprintId: string } }>("/v1/ugc/blueprints/:blueprintId/publish", async (request) => {
@@ -111,6 +195,18 @@ export async function registerCreatorUgcStudioRoutes(app: FastifyInstance): Prom
       if (status === "published") return { changed: false, blueprint: current };
       if (status === "rejected") throw app.httpErrors.forbidden("Blueprint rejeitado pela moderação não pode ser publicado.");
       if (status === "retired") throw app.httpErrors.conflict("Blueprint aposentado não pode ser republicado. Crie uma nova versão.");
+      if (!current.asset_manifest_registry_id) {
+        throw app.httpErrors.conflict("Blueprint legado sem declaração de integridade. Atualize o manifesto HTTPS e o SHA-256 antes de publicar.");
+      }
+      const registry = (await tx`
+        SELECT id,status FROM ugc_asset_manifest_registry
+        WHERE id=${String(current.asset_manifest_registry_id)}::uuid
+          AND owner_user_id=${actor.userId}::uuid
+        FOR UPDATE
+      `)[0];
+      if (!registry || String(registry.status) !== "declared") {
+        throw app.httpErrors.conflict("A declaração de integridade do manifesto não está ativa.");
+      }
       const updated = (await tx`
         UPDATE ugc_object_blueprints SET status='published',updated_at=now()
         WHERE id=${blueprintId}::uuid
