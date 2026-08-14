@@ -51,8 +51,8 @@ const historyQuery = z.object({
 
 type ResourceType = z.infer<typeof resourceTypeSchema>;
 type Category = z.infer<typeof categorySchema>;
-type Queryable = ReturnType<typeof db>;
-type TransactionQueryable = Parameters<Parameters<typeof economySql.begin>[1]>[0];
+type Queryable = (strings: TemplateStringsArray, ...values: any[]) => any;
+type TransactionQueryable = Queryable;
 
 type ResourceState = Readonly<{
   ownerId: string | null;
