@@ -9,6 +9,7 @@ const economySql = db();
 const resourceTypeSchema = z.enum([
   "creator_content",
   "creator_channel",
+  "creator_comment",
   "ugc_blueprint",
   "ad_campaign",
   "ad_surface",
@@ -71,6 +72,10 @@ async function resourceState(sql: Queryable, resourceType: ResourceType, resourc
     const row = (await sql`SELECT creator_user_id owner_id,status FROM creator_content WHERE id=${resourceId}::uuid`)[0];
     return row ? { ownerId: String(row.owner_id), status: String(row.status) } : null;
   }
+  if (resourceType === "creator_comment") {
+    const row = (await sql`SELECT author_user_id owner_id,status FROM creator_content_comments WHERE id=${resourceId}::uuid`)[0];
+    return row ? { ownerId: String(row.owner_id), status: String(row.status) } : null;
+  }
   if (resourceType === "creator_channel") {
     const row = (await sql`SELECT creator_user_id owner_id,status FROM creator_channels WHERE id=${resourceId}::uuid`)[0];
     return row ? { ownerId: String(row.owner_id), status: String(row.status) } : null;
@@ -101,6 +106,14 @@ async function restrictResource(
     if (!row) throw new Error("Conteúdo não encontrado.");
     const previousStatus = String(row.status);
     await tx`UPDATE creator_content SET status='rejected',updated_at=now() WHERE id=${resourceId}::uuid`;
+    return { previousStatus, nextStatus: "rejected" };
+  }
+  if (resourceType === "creator_comment") {
+    const row = (await tx`SELECT status FROM creator_content_comments WHERE id=${resourceId}::uuid FOR UPDATE`)[0];
+    if (!row) throw new Error("Comentário não encontrado.");
+    const previousStatus = String(row.status);
+    if (previousStatus === "deleted") return { previousStatus, nextStatus: "deleted" };
+    await tx`UPDATE creator_content_comments SET status='rejected',updated_at=now() WHERE id=${resourceId}::uuid`;
     return { previousStatus, nextStatus: "rejected" };
   }
   if (resourceType === "creator_channel") {
