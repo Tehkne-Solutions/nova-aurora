@@ -76,7 +76,7 @@ export function VerifiedManifestUpload() {
       const response = await fetch(`${API_URL}${session.upload.path}`, {
         method: session.upload.method,
         headers: { "content-type": session.upload.contentType },
-        body
+        body: bytes
       });
       if (!response.ok) {
         let detail = `Falha ${response.status}`;
