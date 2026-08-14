@@ -8,6 +8,10 @@
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
+    },
+    "./creator-player-economy-settlement": {
+      "types": "./dist/creator-player-economy-settlement.d.ts",
+      "import": "./dist/creator-player-economy-settlement.js"
     }
   },
   "scripts": {

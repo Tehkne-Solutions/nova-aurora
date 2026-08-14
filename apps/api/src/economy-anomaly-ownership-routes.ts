@@ -4,6 +4,7 @@ import { z } from "zod";
 import { db } from "@nova-aurora/database";
 import { requireRole } from "./auth-context.js";
 import { registerCreatorPlayerEconomyRoutes } from "./creator-player-economy-routes.js";
+import { registerCreatorPlayerEconomySettlementRoutes } from "./creator-player-economy-settlement-routes.js";
 import { registerEconomyAnomalyOperationsDashboardRoutes } from "./economy-anomaly-operations-dashboard-routes.js";
 import { registerEconomyAnomalyOwnerWorkloadRoutes } from "./economy-anomaly-owner-workload-routes.js";
 import { registerEconomyAnomalyRebalancingRoutes } from "./economy-anomaly-rebalancing-routes.js";
@@ -26,6 +27,7 @@ function ownershipView(row:Record<string,unknown>){
 
 export async function registerEconomyAnomalyOwnershipRoutes(app:FastifyInstance):Promise<void>{
   await registerCreatorPlayerEconomyRoutes(app);
+  await registerCreatorPlayerEconomySettlementRoutes(app);
   await registerEconomyAnomalyOperationsDashboardRoutes(app);
   await registerEconomyAnomalyOwnerWorkloadRoutes(app);
   await registerEconomyAnomalyRebalancingRoutes(app);
