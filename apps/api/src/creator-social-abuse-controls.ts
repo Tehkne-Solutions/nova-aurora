@@ -68,15 +68,19 @@ async function interactionOwner(request: FastifyRequest): Promise<string | null>
   const params = request.params as { channelId?: string; contentId?: string };
 
   if (params.channelId) {
+    const parsed = z.string().uuid().safeParse(params.channelId);
+    if (!parsed.success) return null;
     const row = (await economySql`
-      SELECT creator_user_id owner_id FROM creator_channels WHERE id=${params.channelId}::uuid
+      SELECT creator_user_id owner_id FROM creator_channels WHERE id=${parsed.data}::uuid
     `)[0];
     return row?.owner_id ? String(row.owner_id) : null;
   }
 
   if (params.contentId) {
+    const parsed = z.string().uuid().safeParse(params.contentId);
+    if (!parsed.success) return null;
     const row = (await economySql`
-      SELECT creator_user_id owner_id FROM creator_content WHERE id=${params.contentId}::uuid
+      SELECT creator_user_id owner_id FROM creator_content WHERE id=${parsed.data}::uuid
     `)[0];
     return row?.owner_id ? String(row.owner_id) : null;
   }
