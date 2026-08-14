@@ -262,7 +262,8 @@ for (const path of [
       ["Descobrir", "Descobrir a cidade criativa"],
       ["Atividade", "Activity Inbox"],
       ["Mensagens", "Mensagens privadas"],
-      ["Meu impacto", "Meu impacto em 30 dias"]
+      ["Meu impacto", "Meu impacto em 30 dias"],
+      ["Segurança", "Contas bloqueadas"]
     ];
     const tabEvidence = [];
     for (const [label, expectedHeading] of tabs) {
