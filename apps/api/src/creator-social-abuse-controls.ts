@@ -28,16 +28,26 @@ const rateActionByRoute: Readonly<Record<string, SocialRateAction>> = {
   "POST /v1/creator/dm/messages/:messageId/report": "dm_report"
 };
 
+const blockGuardedRoutes = new Set([
+  "POST /v1/creator/channels/:channelId/follow",
+  "POST /v1/creator/content/:contentId/like",
+  "POST /v1/creator/content/:contentId/view"
+]);
+
 const summaryQuery = z.object({
   hours: z.coerce.number().int().min(1).max(720).default(24),
   limit: z.coerce.number().int().min(1).max(100).default(20)
 });
 
-function rateActionForRequest(request: FastifyRequest): SocialRateAction | undefined {
+function routeKey(request: FastifyRequest): string | null {
   const routeUrl = request.routeOptions.url;
-  if (!routeUrl) return undefined;
-  const routeKey = `${request.method.toUpperCase()} ${routeUrl}`;
-  const action = rateActionByRoute[routeKey];
+  return routeUrl ? `${request.method.toUpperCase()} ${routeUrl}` : null;
+}
+
+function rateActionForRequest(request: FastifyRequest): SocialRateAction | undefined {
+  const key = routeKey(request);
+  if (!key) return undefined;
+  const action = rateActionByRoute[key];
   if (action !== "moderation_report") return action;
 
   const body = request.body;
@@ -52,12 +62,51 @@ function rateActionForRequest(request: FastifyRequest): SocialRateAction | undef
   return action;
 }
 
+async function interactionOwner(request: FastifyRequest): Promise<string | null> {
+  const key = routeKey(request);
+  if (!key || !blockGuardedRoutes.has(key)) return null;
+  const params = request.params as { channelId?: string; contentId?: string };
+
+  if (params.channelId) {
+    const parsed = z.string().uuid().safeParse(params.channelId);
+    if (!parsed.success) return null;
+    const row = (await economySql`
+      SELECT creator_user_id owner_id FROM creator_channels WHERE id=${parsed.data}::uuid
+    `)[0];
+    return row?.owner_id ? String(row.owner_id) : null;
+  }
+
+  if (params.contentId) {
+    const parsed = z.string().uuid().safeParse(params.contentId);
+    if (!parsed.success) return null;
+    const row = (await economySql`
+      SELECT creator_user_id owner_id FROM creator_content WHERE id=${parsed.data}::uuid
+    `)[0];
+    return row?.owner_id ? String(row.owner_id) : null;
+  }
+
+  return null;
+}
+
+async function enforceBlockGuard(app: FastifyInstance, request: FastifyRequest, actorUserId: string): Promise<void> {
+  const ownerUserId = await interactionOwner(request);
+  if (!ownerUserId || ownerUserId === actorUserId) return;
+  const blocked = (await economySql`
+    SELECT 1 FROM creator_user_blocks
+    WHERE (blocker_user_id=${actorUserId}::uuid AND blocked_user_id=${ownerUserId}::uuid)
+       OR (blocker_user_id=${ownerUserId}::uuid AND blocked_user_id=${actorUserId}::uuid)
+    LIMIT 1
+  `)[0];
+  if (blocked) throw app.httpErrors.forbidden("Interação indisponível entre estas contas.");
+}
+
 export async function registerCreatorSocialAbuseControls(app: FastifyInstance): Promise<void> {
   app.addHook("preHandler", async (request, reply) => {
     const action = rateActionForRequest(request);
     if (!action) return;
     const actor = await requireActor(app, request);
     await consumeSocialRateLimit(app, reply, actor.userId, action);
+    await enforceBlockGuard(app, request, actor.userId);
   });
 
   app.get("/v1/admin/creator-social/abuse", async (request) => {

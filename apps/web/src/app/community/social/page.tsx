@@ -3,11 +3,12 @@
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useAuth } from "../../auth-provider";
+import { SocialSafetyAction, SocialSafetyPanel } from "./social-safety";
 import styles from "./social.module.css";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
+const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
 
-type Tab = "discover" | "activity" | "messages" | "creator";
+type Tab = "discover" | "activity" | "messages" | "creator" | "safety";
 type Category = "social" | "messages" | "economy" | "safety";
 
 type ActivitySummary = {
@@ -111,7 +112,7 @@ async function api<T>(path: string, init?: RequestInit): Promise<T> {
       const body = await response.json() as ApiError;
       detail = body.message ?? body.error ?? detail;
     } catch {
-      // mantém status HTTP quando a resposta não for JSON
+      // Mantém o status HTTP quando a resposta não for JSON.
     }
     throw new Error(detail);
   }
@@ -175,6 +176,11 @@ export default function CreatorSocialHubPage() {
     [threads, selectedThreadId]
   );
 
+  const refreshThreads = useCallback(async () => {
+    const result = await api<{ threads: DmThread[] }>("/v1/creator/dm/threads?limit=40");
+    setThreads(result.threads);
+  }, []);
+
   const loadHub = useCallback(async () => {
     setError(null);
     try {
@@ -224,6 +230,11 @@ export default function CreatorSocialHubPage() {
     setActivities(activityResult.items);
   }
 
+  async function refreshComments(contentId: string) {
+    const result = await api<{ comments: CommentItem[] }>(`/v1/creator/content/${contentId}/comments?limit=40`);
+    setComments(result.comments);
+  }
+
   async function markActivityRead(item: ActivityItem) {
     if (item.readAt) return;
     await run(async () => {
@@ -255,8 +266,7 @@ export default function CreatorSocialHubPage() {
           method: "POST",
           headers: { "idempotency-key": key }
         }),
-        api<{ comments: CommentItem[] }>(`/v1/creator/content/${item.id}/comments?limit=40`)
-          .then((result) => setComments(result.comments))
+        refreshComments(item.id)
       ]);
     });
   }
@@ -288,8 +298,7 @@ export default function CreatorSocialHubPage() {
         body: JSON.stringify({ body })
       });
       setCommentDraft("");
-      const result = await api<{ comments: CommentItem[] }>(`/v1/creator/content/${selectedContent.id}/comments?limit=40`);
-      setComments(result.comments);
+      await refreshComments(selectedContent.id);
     }, "Comentário publicado.");
   }
 
@@ -303,8 +312,7 @@ export default function CreatorSocialHubPage() {
       });
       setRequestText("");
       setRequestTarget(null);
-      const result = await api<{ threads: DmThread[] }>("/v1/creator/dm/threads?limit=40");
-      setThreads(result.threads);
+      await refreshThreads();
       setTab("messages");
     }, "Pedido de conversa enviado.");
   }
@@ -315,8 +323,7 @@ export default function CreatorSocialHubPage() {
       const result = await api<{ messages: DmMessage[] }>(`/v1/creator/dm/threads/${thread.id}/messages?limit=100`);
       setMessages([...result.messages].reverse());
       await api(`/v1/creator/dm/threads/${thread.id}/read`, { method: "POST" });
-      const threadResult = await api<{ threads: DmThread[] }>("/v1/creator/dm/threads?limit=40");
-      setThreads(threadResult.threads);
+      await refreshThreads();
     });
   }
 
@@ -324,8 +331,7 @@ export default function CreatorSocialHubPage() {
     if (!selectedThread) return;
     await run(async () => {
       await api(`/v1/creator/dm/threads/${selectedThread.id}/${action}`, { method: "POST" });
-      const result = await api<{ threads: DmThread[] }>("/v1/creator/dm/threads?limit=40");
-      setThreads(result.threads);
+      await refreshThreads();
     }, action === "accept" ? "Conversa aceita." : action === "decline" ? "Pedido recusado." : "Conversa encerrada.");
   }
 
@@ -340,9 +346,26 @@ export default function CreatorSocialHubPage() {
       setDmDraft("");
       const result = await api<{ messages: DmMessage[] }>(`/v1/creator/dm/threads/${selectedThread.id}/messages?limit=100`);
       setMessages([...result.messages].reverse());
-      const threadResult = await api<{ threads: DmThread[] }>("/v1/creator/dm/threads?limit=40");
-      setThreads(threadResult.threads);
+      await refreshThreads();
     });
+  }
+
+  async function afterContentBlock() {
+    setSelectedContent(null);
+    setRequestTarget(null);
+    setComments([]);
+    await loadHub();
+  }
+
+  async function afterCommentBlock(contentId: string) {
+    await refreshComments(contentId);
+  }
+
+  async function afterMessageBlock() {
+    setSelectedThreadId(null);
+    setMessages([]);
+    setDmDraft("");
+    await refreshThreads();
   }
 
   if (loading) {
@@ -372,7 +395,7 @@ export default function CreatorSocialHubPage() {
               className={styles.metric}
               key={category}
               type="button"
-              onClick={() => { setTab("activity"); }}
+              onClick={() => { setTab(category === "safety" ? "safety" : "activity"); }}
               aria-label={`${categoryLabel(category)}: ${summary.byCategory[category]} não lidas`}
             >
               <span>{categoryLabel(category)}</span>
@@ -386,6 +409,7 @@ export default function CreatorSocialHubPage() {
           <button className={`${styles.tab} ${tab === "activity" ? styles.tabActive : ""}`} type="button" onClick={() => setTab("activity")}>Atividade {summary.unreadTotal > 0 ? `(${summary.unreadTotal})` : ""}</button>
           <button className={`${styles.tab} ${tab === "messages" ? styles.tabActive : ""}`} type="button" onClick={() => setTab("messages")}>Mensagens</button>
           <button className={`${styles.tab} ${tab === "creator" ? styles.tabActive : ""}`} type="button" onClick={() => setTab("creator")}>Meu impacto</button>
+          <button className={`${styles.tab} ${tab === "safety" ? styles.tabActive : ""}`} type="button" onClick={() => setTab("safety")}>Segurança</button>
         </nav>
 
         {notice ? <p className={styles.notice} role="status">{notice}</p> : null}
@@ -424,6 +448,18 @@ export default function CreatorSocialHubPage() {
                         <button className={styles.buttonQuiet} type="button" disabled={busy || own} onClick={() => void likeContent(item)}>Curtir</button>
                         <button className={styles.buttonQuiet} type="button" disabled={busy || own} onClick={() => void followCreator(item)}>Seguir</button>
                         <button className={styles.buttonQuiet} type="button" disabled={busy || own} onClick={() => { setRequestTarget(item); setSelectedContent(null); }}>Mensagem</button>
+                        {!own ? (
+                          <SocialSafetyAction
+                            disabled={busy}
+                            target={{
+                              resourceType: "creator_content",
+                              resourceId: item.id,
+                              userId: item.creator_user_id,
+                              label: item.title
+                            }}
+                            onChanged={afterContentBlock}
+                          />
+                        ) : null}
                       </div>
                     </article>
                   );
@@ -473,6 +509,17 @@ export default function CreatorSocialHubPage() {
                       <strong>{comment.author.displayName}</strong>
                       <time dateTime={comment.createdAt}>{dateTime(comment.createdAt)}</time>
                       <p>{comment.body}</p>
+                      {!comment.author.ownedByRequester ? (
+                        <SocialSafetyAction
+                          target={{
+                            resourceType: "creator_comment",
+                            resourceId: comment.id,
+                            userId: comment.author.userId,
+                            label: `Comentário de ${comment.author.displayName}`
+                          }}
+                          onChanged={() => afterCommentBlock(comment.contentId)}
+                        />
+                      ) : null}
                     </article>
                   ))}
                 </div>
@@ -561,6 +608,17 @@ export default function CreatorSocialHubPage() {
                               <time dateTime={message.createdAt}>{dateTime(message.createdAt)}</time>
                             </div>
                             <div>{message.body ?? (message.removedReason === "moderation" ? "Mensagem removida pela moderação." : "Mensagem removida pelo remetente.")}</div>
+                            {!own && message.removedReason !== "moderation" ? (
+                              <SocialSafetyAction
+                                target={{
+                                  resourceType: "creator_message",
+                                  resourceId: message.id,
+                                  userId: message.sender.userId,
+                                  label: `Mensagem de ${message.sender.displayName}`
+                                }}
+                                onChanged={afterMessageBlock}
+                              />
+                            ) : null}
                           </article>
                         );
                       })}
@@ -617,6 +675,8 @@ export default function CreatorSocialHubPage() {
             )}
           </section>
         ) : null}
+
+        {tab === "safety" ? <SocialSafetyPanel /> : null}
 
         <footer className={styles.footer}>Tehkné Solutions</footer>
       </div>
