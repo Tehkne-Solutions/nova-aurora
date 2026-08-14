@@ -12,7 +12,12 @@ export type SocialRateAction =
   | "content_like_mutation"
   | "content_view"
   | "moderation_report"
-  | "moderation_appeal";
+  | "moderation_appeal"
+  | "dm_request"
+  | "dm_thread_mutation"
+  | "dm_send"
+  | "dm_message_mutation"
+  | "dm_report";
 
 type Limit = Readonly<{ windowSeconds: number; maxAttempts: number }>;
 
@@ -36,7 +41,18 @@ const policies: Readonly<Record<SocialRateAction, readonly Limit[]>> = {
     { windowSeconds: 3600, maxAttempts: 1200 }
   ],
   moderation_report: [{ windowSeconds: 3600, maxAttempts: 20 }],
-  moderation_appeal: [{ windowSeconds: 3600, maxAttempts: 8 }]
+  moderation_appeal: [{ windowSeconds: 3600, maxAttempts: 8 }],
+  dm_request: [
+    { windowSeconds: 3600, maxAttempts: 5 },
+    { windowSeconds: 86400, maxAttempts: 20 }
+  ],
+  dm_thread_mutation: [{ windowSeconds: 3600, maxAttempts: 30 }],
+  dm_send: [
+    { windowSeconds: 60, maxAttempts: 20 },
+    { windowSeconds: 3600, maxAttempts: 300 }
+  ],
+  dm_message_mutation: [{ windowSeconds: 3600, maxAttempts: 120 }],
+  dm_report: [{ windowSeconds: 3600, maxAttempts: 12 }]
 };
 
 type Violation = Readonly<{
