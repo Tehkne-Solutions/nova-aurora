@@ -5,6 +5,8 @@ import { requireActor } from "./auth-context.js";
 
 const economySql = db();
 
+type Queryable = (strings: TemplateStringsArray, ...values: any[]) => any;
+
 const contentTypeSchema = z.enum(["post", "video", "audio", "live", "magazine", "course", "gallery", "event"]);
 const accessModelSchema = z.enum(["free", "purchase", "subscription", "ticket"]);
 const listQuery = z.object({
@@ -41,8 +43,13 @@ function validatePricing(app: FastifyInstance, accessModel: string, priceMinor: 
   }
 }
 
-async function requireOwnedChannel(app: FastifyInstance, channelId: string, userId: string): Promise<void> {
-  const channel = (await economySql`
+async function requireOwnedChannel(
+  app: FastifyInstance,
+  sql: Queryable,
+  channelId: string,
+  userId: string
+): Promise<void> {
+  const channel = (await sql`
     SELECT id FROM creator_channels
     WHERE id=${channelId}::uuid AND creator_user_id=${userId}::uuid AND status='active'
   `)[0];
@@ -93,12 +100,7 @@ export async function registerCreatorStudioRoutes(app: FastifyInstance): Promise
       const accessModel = body.accessModel ?? String(current.access_model);
       const priceMinor = body.priceMinor ?? Number(current.price_minor);
       validatePricing(app, accessModel, priceMinor);
-
-      const channel = (await tx`
-        SELECT id FROM creator_channels
-        WHERE id=${channelId}::uuid AND creator_user_id=${actor.userId}::uuid AND status='active'
-      `)[0];
-      if (!channel) throw app.httpErrors.notFound("Canal ativo do criador não encontrado.");
+      await requireOwnedChannel(app, tx, channelId, actor.userId);
 
       const updated = (await tx`
         UPDATE creator_content
@@ -125,7 +127,7 @@ export async function registerCreatorStudioRoutes(app: FastifyInstance): Promise
       if (!content) throw app.httpErrors.notFound("Conteúdo do criador não encontrado.");
       if (String(content.status) === "rejected") throw app.httpErrors.forbidden("Conteúdo rejeitado pela moderação não pode ser republicado.");
       if (String(content.status) === "published") return { changed: false, content };
-      await requireOwnedChannel(app, String(content.channel_id), actor.userId);
+      await requireOwnedChannel(app, tx, String(content.channel_id), actor.userId);
       validatePricing(app, String(content.access_model), Number(content.price_minor));
       const updated = (await tx`
         UPDATE creator_content
