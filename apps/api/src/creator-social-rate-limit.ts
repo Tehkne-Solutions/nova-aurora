@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import type { FastifyInstance } from "fastify";
+import type { FastifyInstance, FastifyReply } from "fastify";
 import { db } from "@nova-aurora/database";
 
 const economySql = db();
@@ -49,6 +49,7 @@ type Violation = Readonly<{
 
 export async function consumeSocialRateLimit(
   app: FastifyInstance,
+  reply: FastifyReply,
   userId: string,
   action: SocialRateAction
 ): Promise<void> {
@@ -103,6 +104,7 @@ export async function consumeSocialRateLimit(
   });
 
   if (!violation) return;
+  reply.header("retry-after", String(violation.retryAfterSeconds));
   throw app.httpErrors.tooManyRequests(
     `Limite de interação excedido para ${violation.action}. Tente novamente em aproximadamente ${violation.retryAfterSeconds}s.`
   );
