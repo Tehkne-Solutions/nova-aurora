@@ -244,7 +244,7 @@ export async function registerUgcAssetUploadRoutes(app: FastifyInstance): Promis
     }
     reply
       .header("cache-control", "public,max-age=31536000,immutable")
-      .header("etag", `\"sha256-${storedSha}\"")
+      .header("etag", `"sha256-${storedSha}"`)
       .header("x-content-type-options", "nosniff")
       .type("application/json; charset=utf-8");
     return reply.send(bytes);
