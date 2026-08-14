@@ -62,6 +62,7 @@ export default function CommunityPage() {
           </p>
         </div>
         <nav>
+          <Link href="/community/social">Hub social</Link>
           <Link href="/feedback">Enviar feedback</Link>
           <Link href="/beta-control">Meu beta</Link>
           <Link href="/status">Status</Link>
