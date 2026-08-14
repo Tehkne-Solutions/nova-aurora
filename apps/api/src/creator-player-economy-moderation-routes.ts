@@ -10,6 +10,7 @@ const resourceTypeSchema = z.enum([
   "creator_content",
   "creator_channel",
   "creator_comment",
+  "creator_message",
   "ugc_blueprint",
   "ad_campaign",
   "ad_surface",
@@ -76,6 +77,10 @@ async function resourceState(sql: Queryable, resourceType: ResourceType, resourc
     const row = (await sql`SELECT author_user_id owner_id,status FROM creator_content_comments WHERE id=${resourceId}::uuid`)[0];
     return row ? { ownerId: String(row.owner_id), status: String(row.status) } : null;
   }
+  if (resourceType === "creator_message") {
+    const row = (await sql`SELECT sender_user_id owner_id,status FROM creator_dm_messages WHERE id=${resourceId}::uuid`)[0];
+    return row ? { ownerId: String(row.owner_id), status: String(row.status) } : null;
+  }
   if (resourceType === "creator_channel") {
     const row = (await sql`SELECT creator_user_id owner_id,status FROM creator_channels WHERE id=${resourceId}::uuid`)[0];
     return row ? { ownerId: String(row.owner_id), status: String(row.status) } : null;
@@ -114,6 +119,14 @@ async function restrictResource(
     const previousStatus = String(row.status);
     if (previousStatus === "deleted") return { previousStatus, nextStatus: "deleted" };
     await tx`UPDATE creator_content_comments SET status='rejected',updated_at=now() WHERE id=${resourceId}::uuid`;
+    return { previousStatus, nextStatus: "rejected" };
+  }
+  if (resourceType === "creator_message") {
+    const row = (await tx`SELECT status FROM creator_dm_messages WHERE id=${resourceId}::uuid FOR UPDATE`)[0];
+    if (!row) throw new Error("Mensagem privada não encontrada.");
+    const previousStatus = String(row.status);
+    if (previousStatus === "deleted") return { previousStatus, nextStatus: "deleted" };
+    await tx`UPDATE creator_dm_messages SET status='rejected',updated_at=now() WHERE id=${resourceId}::uuid`;
     return { previousStatus, nextStatus: "rejected" };
   }
   if (resourceType === "creator_channel") {
@@ -158,6 +171,9 @@ export async function registerCreatorPlayerEconomyModerationRoutes(app: FastifyI
   app.post("/v1/creator-moderation/reports", async (request) => {
     const actor = await requireActor(app, request);
     const body = reportSchema.parse(request.body);
+    if (body.resourceType === "creator_message") {
+      throw app.httpErrors.badRequest("Mensagens privadas devem ser denunciadas pelo endpoint da própria mensagem.");
+    }
     const resource = await resourceState(economySql, body.resourceType, body.resourceId);
     if (!resource) throw app.httpErrors.notFound("Recurso reportado não encontrado.");
     if (resource.ownerId === actor.userId) throw app.httpErrors.badRequest("Não é possível denunciar o próprio recurso.");
