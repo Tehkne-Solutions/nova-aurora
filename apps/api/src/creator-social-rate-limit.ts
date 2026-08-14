@@ -55,6 +55,11 @@ export async function consumeSocialRateLimit(
 ): Promise<void> {
   const limits = policies[action];
   const violation = await economySql.begin("isolation level serializable", async (tx) => {
+    await tx`
+      DELETE FROM creator_social_rate_buckets
+      WHERE user_id=${userId}::uuid AND bucket_start < now()-interval '2 days'
+    `;
+
     let firstViolation: Violation | null = null;
 
     for (const limit of limits) {
