@@ -9,6 +9,7 @@ const economySql = db();
 const resourceTypeSchema = z.enum([
   "creator_content",
   "creator_channel",
+  "creator_comment",
   "ugc_blueprint",
   "ad_campaign",
   "ad_surface",
@@ -46,6 +47,10 @@ async function ownerState(
     const row = (await tx`SELECT creator_user_id owner_id,status FROM creator_content WHERE id=${resourceId}::uuid FOR UPDATE`)[0];
     return row ? { ownerId: String(row.owner_id), status: String(row.status) } : null;
   }
+  if (resourceType === "creator_comment") {
+    const row = (await tx`SELECT author_user_id owner_id,status FROM creator_content_comments WHERE id=${resourceId}::uuid FOR UPDATE`)[0];
+    return row ? { ownerId: String(row.owner_id), status: String(row.status) } : null;
+  }
   if (resourceType === "creator_channel") {
     const row = (await tx`SELECT creator_user_id owner_id,status FROM creator_channels WHERE id=${resourceId}::uuid FOR UPDATE`)[0];
     return row ? { ownerId: String(row.owner_id), status: String(row.status) } : null;
@@ -81,6 +86,10 @@ async function restoreResource(
 
   if (resourceType === "creator_content") {
     await tx`UPDATE creator_content SET status=${restoreStatus},updated_at=now() WHERE id=${resourceId}::uuid`;
+    return { previousStatus: restrictedStatus, nextStatus: restoreStatus, followUp: "none" };
+  }
+  if (resourceType === "creator_comment") {
+    await tx`UPDATE creator_content_comments SET status=${restoreStatus},updated_at=now() WHERE id=${resourceId}::uuid`;
     return { previousStatus: restrictedStatus, nextStatus: restoreStatus, followUp: "none" };
   }
   if (resourceType === "creator_channel") {
