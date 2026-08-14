@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { UgcCreatorStudio } from "./ugc-studio";
-import { UgcManifestIntegrityPanel } from "./ugc-manifest-integrity";
+import { UgcManifestIntegrityGate } from "./ugc-manifest-integrity";
 import styles from "../../social.module.css";
 
 export default function UgcCreatorStudioPage() {
@@ -23,8 +23,9 @@ export default function UgcCreatorStudioPage() {
           </div>
         </header>
 
-        <UgcCreatorStudio />
-        <UgcManifestIntegrityPanel />
+        <UgcManifestIntegrityGate>
+          <UgcCreatorStudio />
+        </UgcManifestIntegrityGate>
 
         <footer className={styles.footer}>Tehkné Solutions</footer>
       </div>
