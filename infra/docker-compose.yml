@@ -17,6 +17,16 @@ services:
     command: ["redis-server", "--appendonly", "yes"]
     ports: ["6379:6379"]
     volumes: ["redis_data:/data"]
+  object-storage:
+    image: chrislusf/seaweedfs:4.29
+    command: ["mini", "-dir=/data"]
+    environment:
+      AWS_ACCESS_KEY_ID: nova-aurora-dev
+      AWS_SECRET_ACCESS_KEY: nova-aurora-dev-secret-key-1234567890
+      S3_BUCKET: nova-aurora-ugc
+    ports: ["8333:8333"]
+    volumes: ["object_storage_data:/data"]
 volumes:
   postgres_data:
   redis_data:
+  object_storage_data:
