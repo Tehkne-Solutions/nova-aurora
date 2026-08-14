@@ -12,10 +12,22 @@ import {
 import { usePathname,useRouter } from "next/navigation";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
+const LEGACY_LOCAL_API_URL = "http://localhost:3001";
 const TOKEN_KEY = "nova-aurora.session";
 const IDENTITY_KEY = "nova-aurora.identity";
 
+type IdentityPayload = Readonly<{
+  id?: string;
+  userId: string;
+  email: string;
+  displayName: string;
+  sessionId: string;
+  roles: readonly string[];
+  expiresAt: string;
+}>;
+
 type Identity = Readonly<{
+  id: string;
   userId: string;
   email: string;
   displayName: string;
@@ -27,16 +39,28 @@ type Identity = Readonly<{
 type AuthContextValue = Readonly<{
   identity: Identity | null;
   token: string | null;
-  setSession(token: string, identity: Identity): void;
+  setSession(token: string, identity: IdentityPayload): void;
   logout(): Promise<void>;
 }>;
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
+function normalizeIdentity(identity: IdentityPayload): Identity {
+  return {
+    id: identity.userId,
+    userId: identity.userId,
+    email: identity.email,
+    displayName: identity.displayName,
+    sessionId: identity.sessionId,
+    roles: identity.roles,
+    expiresAt: identity.expiresAt
+  };
+}
+
 function storedIdentity(): Identity | null {
   try {
     const value = localStorage.getItem(IDENTITY_KEY);
-    return value ? JSON.parse(value) as Identity : null;
+    return value ? normalizeIdentity(JSON.parse(value) as IdentityPayload) : null;
   } catch {
     return null;
   }
@@ -102,12 +126,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         : input instanceof URL
           ? input.toString()
           : input;
-      const isApi = requestUrl.startsWith(API_URL);
-      if (!isApi) return originalFetch(input,init);
+      const legacyLocalRequest = !(input instanceof Request)
+        && API_URL !== LEGACY_LOCAL_API_URL
+        && requestUrl.startsWith(LEGACY_LOCAL_API_URL);
+      const apiRequestUrl = requestUrl.startsWith(API_URL)
+        ? requestUrl
+        : legacyLocalRequest
+          ? `${API_URL}${requestUrl.slice(LEGACY_LOCAL_API_URL.length)}`
+          : null;
+      if (!apiRequestUrl) return originalFetch(input,init);
 
       const activeToken = localStorage.getItem(TOKEN_KEY);
       const activeIdentity = storedIdentity();
-      const publicAuth = isPublicAuthRequest(requestUrl);
+      const publicAuth = isPublicAuthRequest(apiRequestUrl);
       const headers = new Headers(input instanceof Request ? input.headers : undefined);
       new Headers(init?.headers).forEach((value,name) => headers.set(name,value));
 
@@ -123,7 +154,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         headers.set("x-actor-context",legacyActor);
       }
 
-      const response = await originalFetch(input,{ ...init,headers });
+      const normalizedInput: RequestInfo | URL = apiRequestUrl === requestUrl ? input : apiRequestUrl;
+      const response = await originalFetch(normalizedInput,{ ...init,headers });
       if (response.status === 401 && !publicAuth) {
         clearSession();
         setToken(null);
@@ -150,14 +182,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     void fetch(`${API_URL}/v1/auth/me`,{ cache: "no-store" })
       .then(async (response) => {
         if (!response.ok) return;
-        const nextIdentity = await response.json() as Identity;
+        const nextIdentity = normalizeIdentity(await response.json() as IdentityPayload);
         localStorage.setItem(IDENTITY_KEY,JSON.stringify(nextIdentity));
         setIdentity(nextIdentity);
       })
       .catch(() => undefined);
   },[pathname,ready,router,token]);
 
-  const setSession = useCallback((nextToken: string,nextIdentity: Identity) => {
+  const setSession = useCallback((nextToken: string,nextIdentityPayload: IdentityPayload) => {
+    const nextIdentity = normalizeIdentity(nextIdentityPayload);
     localStorage.setItem(TOKEN_KEY,nextToken);
     localStorage.setItem(IDENTITY_KEY,JSON.stringify(nextIdentity));
     setToken(nextToken);
