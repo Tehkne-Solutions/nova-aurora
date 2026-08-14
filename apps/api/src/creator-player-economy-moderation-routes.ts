@@ -52,6 +52,7 @@ const historyQuery = z.object({
 type ResourceType = z.infer<typeof resourceTypeSchema>;
 type Category = z.infer<typeof categorySchema>;
 type Queryable = ReturnType<typeof db>;
+type TransactionQueryable = Parameters<Parameters<typeof economySql.begin>[1]>[0];
 
 type ResourceState = Readonly<{
   ownerId: string | null;
@@ -91,7 +92,7 @@ async function resourceState(sql: Queryable, resourceType: ResourceType, resourc
 }
 
 async function restrictResource(
-  tx: Queryable,
+  tx: TransactionQueryable,
   resourceType: ResourceType,
   resourceId: string
 ): Promise<{ previousStatus: string; nextStatus: string }> {
