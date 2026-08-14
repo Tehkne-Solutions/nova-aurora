@@ -176,7 +176,7 @@ function auditExpression() {
   })()`;
 }
 
-const report = { pages: [], login: null, socialHub: null, exceptions };
+const report = { pages: [], login: null, socialHub: null, creatorStudio: null, exceptions };
 await command("Page.enable");
 await command("Runtime.enable");
 
@@ -220,12 +220,18 @@ for (const path of [
   "/feedback",
   "/beta-insights",
   "/community",
-  "/community/social"
+  "/community/social",
+  "/community/social/studio"
 ]) {
   await navigate(path);
 
   if (path === "/community/social") {
     await waitForHeading("h1", "Hub Social", "Hub Social");
+  }
+  if (path === "/community/social/studio") {
+    await waitForHeading("h1", "Creator Studio", "Creator Studio");
+    const readyState = await waitForHeading("h3", "Creator Studio", "Creator Studio · dados editoriais");
+    report.creatorStudio = { path, heading: readyState.text, ready: true };
   }
 
   const audit = await evaluate(auditExpression());
@@ -296,4 +302,10 @@ if (child.exitCode === null) {
 await retry(async () => {
   await rm(profile, { recursive: true, force: true });
 }, 5_000);
-console.log(JSON.stringify({ status: "passed", pages: report.pages.length, socialHubTabs: report.socialHub?.tabs.length ?? 0, signature: "Tehkné Solutions" }));
+console.log(JSON.stringify({
+  status: "passed",
+  pages: report.pages.length,
+  socialHubTabs: report.socialHub?.tabs.length ?? 0,
+  creatorStudioReady: report.creatorStudio?.ready ?? false,
+  signature: "Tehkné Solutions"
+}));
