@@ -123,9 +123,9 @@ export async function registerCreatorPlayerEconomyDiscoveryRoutes(app: FastifyIn
   app.post<{ Params: { channelId: string } }>("/v1/creator/channels/:channelId/follow", async (request) => {
     const actor = await requireActor(app, request);
     const channelId = z.string().uuid().parse(request.params.channelId);
-    const channel = (await economySql`SELECT id,owner_user_id,status FROM creator_channels WHERE id=${channelId}::uuid`)[0];
+    const channel = (await economySql`SELECT id,creator_user_id owner_id,status FROM creator_channels WHERE id=${channelId}::uuid`)[0];
     if (!channel || String(channel.status) !== "active") throw app.httpErrors.notFound("Canal ativo não encontrado.");
-    if (String(channel.owner_user_id) === actor.userId) throw app.httpErrors.badRequest("Não é possível seguir o próprio canal.");
+    if (String(channel.owner_id) === actor.userId) throw app.httpErrors.badRequest("Não é possível seguir o próprio canal.");
     await economySql`
       INSERT INTO creator_channel_follows(channel_id,follower_user_id)
       VALUES(${channelId}::uuid,${actor.userId}::uuid)
@@ -204,7 +204,7 @@ export async function registerCreatorPlayerEconomyDiscoveryRoutes(app: FastifyIn
       ), follower_metrics AS (
         SELECT channel_id,count(*)::int followers FROM creator_channel_follows GROUP BY channel_id
       )
-      SELECT content.*,channel.handle,channel.display_name,
+      SELECT content.*,channel.handle,channel.name display_name,
         coalesce(view_metrics.views_7d,0)::int views_7d,
         coalesce(like_metrics.likes,0)::int likes,
         coalesce(purchase_metrics.purchases_30d,0)::int purchases_30d,
@@ -234,8 +234,8 @@ export async function registerCreatorPlayerEconomyDiscoveryRoutes(app: FastifyIn
     const query = windowQuery.parse(request.query);
     const row = (await economySql`
       SELECT
-        (SELECT count(*) FROM creator_channels c WHERE c.owner_user_id=${actor.userId}::uuid)::int channels,
-        (SELECT count(*) FROM creator_channel_follows f JOIN creator_channels c ON c.id=f.channel_id WHERE c.owner_user_id=${actor.userId}::uuid)::int followers,
+        (SELECT count(*) FROM creator_channels c WHERE c.creator_user_id=${actor.userId}::uuid)::int channels,
+        (SELECT count(*) FROM creator_channel_follows f JOIN creator_channels c ON c.id=f.channel_id WHERE c.creator_user_id=${actor.userId}::uuid)::int followers,
         (SELECT count(*) FROM creator_content c WHERE c.creator_user_id=${actor.userId}::uuid AND c.status='published')::int published_content,
         (SELECT count(*) FROM creator_content_views v JOIN creator_content c ON c.id=v.content_id WHERE c.creator_user_id=${actor.userId}::uuid AND v.occurred_at>=now()-(${query.days}::text||' days')::interval)::int views,
         (SELECT count(*) FROM creator_content_reactions r JOIN creator_content c ON c.id=r.content_id WHERE c.creator_user_id=${actor.userId}::uuid AND r.created_at>=now()-(${query.days}::text||' days')::interval)::int likes,
@@ -268,7 +268,7 @@ export async function registerCreatorPlayerEconomyDiscoveryRoutes(app: FastifyIn
     const actor = await requireActor(app, request);
     const query = limitQuery.parse(request.query);
     const rows = await economySql`
-      SELECT instance.id,instance.serial_number,instance.provenance_hash,instance.minted_at,instance.status,
+      SELECT instance.id,instance.serial_number,instance.provenance_hash,instance.created_at minted_at,instance.status,
         edition.id edition_id,edition.edition_name,edition.scarcity,edition.transferable,edition.resale_allowed,
         blueprint.id blueprint_id,blueprint.name blueprint_name,blueprint.category,
         blueprint.creator_user_id=instance.owner_user_id created_by_owner,
@@ -278,7 +278,7 @@ export async function registerCreatorPlayerEconomyDiscoveryRoutes(app: FastifyIn
       JOIN ugc_object_blueprints blueprint ON blueprint.id=edition.blueprint_id
       LEFT JOIN ugc_market_listings listing ON listing.instance_id=instance.id AND listing.status='active'
       WHERE instance.owner_user_id=${actor.userId}::uuid AND instance.status='active'
-      ORDER BY instance.minted_at DESC,instance.id ASC
+      ORDER BY instance.created_at DESC,instance.id ASC
       LIMIT ${query.limit}
     `;
     return { instances: rows, signature: "Tehkné Solutions" };
@@ -316,7 +316,7 @@ export async function registerCreatorPlayerEconomyDiscoveryRoutes(app: FastifyIn
         contentHash: String(instance.content_hash),
         blueprint: { name: String(instance.blueprint_name), category: String(instance.category), creatorUserId: String(instance.creator_user_id) },
         edition: { name: String(instance.edition_name), scarcity: String(instance.scarcity) },
-        mintedAt: new Date(String(instance.minted_at)).toISOString(),
+        mintedAt: new Date(String(instance.created_at)).toISOString(),
         transferCount: trades.length,
         ownedByRequester: String(instance.owner_user_id) === actor.userId,
         chain
