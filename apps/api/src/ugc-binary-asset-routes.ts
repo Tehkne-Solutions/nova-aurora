@@ -5,6 +5,11 @@ import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { db } from "@nova-aurora/database";
 import { requireActor } from "./auth-context.js";
+import {
+  GlbSecurityError,
+  validateGlbForRuntime,
+  type GlbSecurityReport
+} from "./glb-structural-security.js";
 import { malwareScanEnabled, scanBufferForMalware } from "./malware-scan-clamav.js";
 import { deleteObject, getObject, objectStorageEnabled, putObject } from "./object-storage-s3.js";
 
@@ -220,12 +225,32 @@ export async function registerUgcBinaryAssetRoutes(app: FastifyInstance): Promis
           `;
           return { kind: "rejected" as const, session, message: error instanceof Error ? error.message : "Assinatura de arquivo inválida." };
         }
+
+        let glbSecurity: GlbSecurityReport | null = null;
+        if (String(session.content_type) === "model/gltf-binary") {
+          try {
+            glbSecurity = validateGlbForRuntime(bytes);
+          } catch (error) {
+            const code = error instanceof GlbSecurityError ? error.code : "invalid-structure";
+            await tx`
+              UPDATE ugc_binary_asset_upload_sessions
+              SET status='rejected',rejection_reason=${`glb-structural:${code}`},updated_at=now()
+              WHERE id=${uploadId}::uuid
+            `;
+            return {
+              kind: "rejected" as const,
+              session,
+              message: `GLB rejeitado pela validação estrutural segura (${code}).`
+            };
+          }
+        }
+
         await tx`
           UPDATE ugc_binary_asset_upload_sessions
           SET status='scanning',updated_at=now()
           WHERE id=${uploadId}::uuid
         `;
-        return { kind: "claimed" as const, session, receivedSha };
+        return { kind: "claimed" as const, session, receivedSha, glbSecurity };
       });
 
       if (claim.kind === "expired") throw app.httpErrors.gone("Sessão binária expirada.");
@@ -303,7 +328,8 @@ export async function registerUgcBinaryAssetRoutes(app: FastifyInstance): Promis
             sizeBytes: promoted.length,
             contentType,
             malwareScan: "clean",
-            alreadyClean: false
+            alreadyClean: false,
+            ...(claim.glbSecurity ? { glbSecurity: claim.glbSecurity } : {})
           },
           signature: "Tehkné Solutions"
         };
