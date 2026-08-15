@@ -34,6 +34,7 @@ type ParsedGlb = Readonly<{ document: JsonObject; bin: Uint8Array }>;
 type PrimitiveProfile = Readonly<{
   materialIndex: number | null;
   tangentAccessor: number | null;
+  texCoordAccessor: number | null;
   indicesAccessor: number | null;
   world: Mat4;
 }>;
@@ -101,7 +102,7 @@ function translation(x: number, y: number, z: number): number[] {
 }
 
 function scaling(x: number, y: number, z: number): number[] {
-  return [x, 0, 0, 0, 0, y, 0, 0, 0, z, 0, 0, 0, 0, 1];
+  return [x, 0, 0, 0, 0, y, 0, 0, 0, 0, z, 0, 0, 0, 0, 1];
 }
 
 function quaternionMatrix(x: number, y: number, z: number, w: number): number[] {
@@ -223,6 +224,27 @@ function accessorOffset(document: JsonObject, accessor: JsonObject): Readonly<{ 
   return { offset: Number(view.byteOffset ?? 0) + Number(accessor.byteOffset ?? 0), stride: Number(view.byteStride ?? 0) };
 }
 
+function readFloatVec2(document: JsonObject, bin: Uint8Array, accessorIndex: number, label: string): Float32Array {
+  const accessors = array(document.accessors, "accessors").map((value, position) => object(value, `accessors[${position}]`));
+  const accessor = accessors[index(accessorIndex, accessors.length, label)]!;
+  if (Number(accessor.componentType) !== 5126 || accessor.type !== "VEC2") throw new Error(`${label} precisa ser FLOAT VEC2.`);
+  const count = integer(accessor.count, `${label}.count`, 1);
+  const { offset, stride } = accessorOffset(document, accessor);
+  const itemStride = stride || 8;
+  if (offset + itemStride * Math.max(0, count - 1) + 8 > bin.byteLength) throw new Error(`${label} fora do buffer.`);
+  const source = new DataView(bin.buffer, bin.byteOffset, bin.byteLength);
+  const output = new Float32Array(count * 2);
+  for (let item = 0; item < count; item += 1) {
+    const base = offset + item * itemStride;
+    const u = source.getFloat32(base, true);
+    const v = source.getFloat32(base + 4, true);
+    if (!Number.isFinite(u) || !Number.isFinite(v)) throw new Error(`${label} contém número não finito.`);
+    output[item * 2] = u;
+    output[item * 2 + 1] = v;
+  }
+  return output;
+}
+
 function readFloatVec4(document: JsonObject, bin: Uint8Array, accessorIndex: number, label: string): Float32Array {
   const accessors = array(document.accessors, "accessors").map((value, position) => object(value, `accessors[${position}]`));
   const accessor = accessors[index(accessorIndex, accessors.length, label)]!;
@@ -266,6 +288,17 @@ function readIndices(document: JsonObject, bin: Uint8Array, accessorIndex: numbe
         : source.getUint32(base, true);
   }
   return output;
+}
+
+function expandVec2(values: Float32Array, indices: Uint32Array): Float32Array {
+  const expanded = new Float32Array(indices.length * 2);
+  for (let item = 0; item < indices.length; item += 1) {
+    const sourceOffset = indices[item]! * 2;
+    if (sourceOffset + 1 >= values.length) throw new Error("Índice GLB referencia TEXCOORD_0 inexistente.");
+    expanded[item * 2] = values[sourceOffset]!;
+    expanded[item * 2 + 1] = values[sourceOffset + 1]!;
+  }
+  return expanded;
 }
 
 function expandVec4(values: Float32Array, indices: Uint32Array): Float32Array {
@@ -356,6 +389,7 @@ function primitiveProfiles(document: JsonObject): PrimitiveProfile[] {
         output.push({
           materialIndex: primitive.material === undefined ? null : Number(primitive.material),
           tangentAccessor: attributes.TANGENT === undefined ? null : Number(attributes.TANGENT),
+          texCoordAccessor: attributes.TEXCOORD_0 === undefined ? null : Number(attributes.TEXCOORD_0),
           indicesAccessor: primitive.indices === undefined ? null : Number(primitive.indices),
           world
         });
@@ -403,7 +437,16 @@ export function parseNormalMappedPbrGlb(buffer: ArrayBuffer): NormalMappedPbrMod
     if (!mapped) return { ...drawable, tangents: null, normalTexture: null, normalScale: 1 };
     if (drawable.normalSource !== "accessor") throw new Error(`primitive[${primitiveIndex}] usa normalTexture sem NORMAL authored.`);
     if (profile.tangentAccessor === null) throw new Error(`primitive[${primitiveIndex}] usa normalTexture sem TANGENT authored certificado.`);
-    if (!drawable.texCoords) throw new Error(`primitive[${primitiveIndex}] usa normalTexture sem TEXCOORD_0.`);
+    if (profile.texCoordAccessor === null) throw new Error(`primitive[${primitiveIndex}] usa normalTexture sem TEXCOORD_0.`);
+
+    let texCoords = drawable.texCoords;
+    if (!texCoords) {
+      const rawTexCoords = readFloatVec2(document, bin, profile.texCoordAccessor, `primitive[${primitiveIndex}].TEXCOORD_0`);
+      texCoords = profile.indicesAccessor === null
+        ? rawTexCoords
+        : expandVec2(rawTexCoords, readIndices(document, bin, profile.indicesAccessor));
+    }
+    if (texCoords.length / 2 !== drawable.positions.length / 3) throw new Error(`primitive[${primitiveIndex}] possui TEXCOORD_0 com count incompatível.`);
 
     const rawTangents = readFloatVec4(document, bin, profile.tangentAccessor, `primitive[${primitiveIndex}].TANGENT`);
     const transformed = transformedTangents(rawTangents, profile.world);
@@ -413,7 +456,7 @@ export function parseNormalMappedPbrGlb(buffer: ArrayBuffer): NormalMappedPbrMod
     normalMappedMaterials += 1;
     authoredTangentPrimitives += 1;
     uniqueTextures.set(mapped.texture.textureIndex, mapped.texture.bytes.byteLength);
-    return { ...drawable, tangents, normalTexture: mapped.texture, normalScale: mapped.scale };
+    return { ...drawable, texCoords, tangents, normalTexture: mapped.texture, normalScale: mapped.scale };
   });
 
   return {
