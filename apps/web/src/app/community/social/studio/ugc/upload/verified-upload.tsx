@@ -17,15 +17,20 @@ type UploadSession = Readonly<{
     maxBytes: number;
   };
 }>;
-type VerifiedResult = Readonly<{
-  manifest: {
-    uploadId: string;
-    assetManifestUri: string;
-    sha256: string;
-    sizeBytes: number;
-    verifiedByPlatform: boolean;
-    alreadyVerified: boolean;
-  };
+
+export type VerifiedManifest = Readonly<{
+  uploadId: string;
+  assetManifestUri: string;
+  sha256: string;
+  sizeBytes: number;
+  verifiedByPlatform: boolean;
+  alreadyVerified: boolean;
+}>;
+
+type VerifiedResult = Readonly<{ manifest: VerifiedManifest }>;
+type VerifiedManifestUploadProps = Readonly<{
+  embedded?: boolean;
+  onVerified?: (manifest: VerifiedManifest) => void;
 }>;
 
 async function jsonApi<T>(path: string, init?: RequestInit): Promise<T> {
@@ -54,11 +59,11 @@ async function sha256Hex(bytes: ArrayBuffer): Promise<string> {
   return [...new Uint8Array(digest)].map((value) => value.toString(16).padStart(2, "0")).join("");
 }
 
-export function VerifiedManifestUpload() {
+export function VerifiedManifestUpload({ embedded = false, onVerified }: VerifiedManifestUploadProps = {}) {
   const [file, setFile] = useState<File | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [result, setResult] = useState<VerifiedResult["manifest"] | null>(null);
+  const [result, setResult] = useState<VerifiedManifest | null>(null);
 
   async function upload() {
     if (!file) return;
@@ -90,6 +95,7 @@ export function VerifiedManifestUpload() {
       }
       const verified = await response.json() as VerifiedResult;
       setResult(verified.manifest);
+      onVerified?.(verified.manifest);
     } catch (uploadError) {
       setError(uploadError instanceof Error ? uploadError.message : "Não foi possível verificar o manifesto.");
     } finally {
@@ -97,11 +103,11 @@ export function VerifiedManifestUpload() {
     }
   }
 
-  return (
-    <section className={styles.detail} aria-labelledby="verified-upload-title">
+  const content = (
+    <>
       <div className={styles.sectionHeader}>
         <div>
-          <h3 id="verified-upload-title">Upload verificado de manifesto</h3>
+          {embedded ? <h4 id="verified-upload-title">Manifesto verificado pela plataforma</h4> : <h3 id="verified-upload-title">Upload verificado de manifesto</h3>}
           <p>A plataforma calcula o SHA-256 no navegador, recebe o arquivo por sessão temporária assinada, grava no storage privado e relê os bytes antes de confirmar.</p>
         </div>
       </div>
@@ -110,9 +116,9 @@ export function VerifiedManifestUpload() {
 
       <section className={styles.panel}>
         <div className={styles.formRow}>
-          <label htmlFor="ugc-verified-manifest-file">Manifesto JSON</label>
+          <label htmlFor={embedded ? "ugc-verified-manifest-file-inline" : "ugc-verified-manifest-file"}>Manifesto JSON</label>
           <input
-            id="ugc-verified-manifest-file"
+            id={embedded ? "ugc-verified-manifest-file-inline" : "ugc-verified-manifest-file"}
             className={styles.input}
             type="file"
             accept="application/json,.json"
@@ -122,24 +128,29 @@ export function VerifiedManifestUpload() {
           <p>Máximo 1 MiB. A raiz do arquivo precisa ser um objeto JSON.</p>
           <div className={styles.actions}>
             <button className={styles.button} type="button" disabled={busy || !file} onClick={() => void upload()}>
-              {busy ? "Verificando bytes..." : "Enviar e verificar"}
+              {busy ? "Verificando bytes..." : embedded ? "Verificar e vincular" : "Enviar e verificar"}
             </button>
           </div>
         </div>
       </section>
 
       {result ? (
-        <section className={styles.panel} aria-labelledby="verified-result-title">
-          <h4 id="verified-result-title">Bytes confirmados pelo storage</h4>
+        <section className={styles.panel} aria-labelledby={embedded ? "verified-result-title-inline" : "verified-result-title"}>
+          <h4 id={embedded ? "verified-result-title-inline" : "verified-result-title"}>Bytes confirmados pelo storage</h4>
           <p><span className={styles.pill}>Verificado pela plataforma</span> · {result.sizeBytes} bytes</p>
           <p className={styles.code}>Upload {result.uploadId}</p>
           <p className={styles.code}>SHA-256 {result.sha256}</p>
           <p className={styles.code}>{result.assetManifestUri}</p>
-          <p>Este resultado pode ser vinculado atomicamente a um blueprint pelo contrato `verifiedUploadId`.</p>
+          <p>{embedded ? "URI, SHA-256 e vínculo verificado foram aplicados ao blueprint atual." : "Este resultado pode ser vinculado atomicamente a um blueprint pelo contrato verifiedUploadId."}</p>
         </section>
       ) : null}
-    </section>
+    </>
   );
+
+  if (embedded) {
+    return <div aria-labelledby="verified-upload-title">{content}</div>;
+  }
+  return <section className={styles.detail} aria-labelledby="verified-upload-title">{content}</section>;
 }
 
 // Tehkné Solutions
