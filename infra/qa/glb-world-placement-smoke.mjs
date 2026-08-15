@@ -113,7 +113,7 @@ if (publicAsset.headers.get("content-type")?.split(";", 1)[0] !== "model/gltf-bi
   throw new Error("GET público do GLB não preservou model/gltf-binary.");
 }
 
-const library = await requireJson("/v1/ugc/assets/library/me?status=clean&limit=200", { headers: authHeaders });
+const library = await requireJson("/v1/ugc/assets/library/me?status=clean&limit=100", { headers: authHeaders });
 const libraryGlb = library?.assets?.find((entry) => entry.id === upload.id);
 if (!libraryGlb || libraryGlb.contentType !== "model/gltf-binary" || libraryGlb.verifiedSha256 !== glbSha) {
   throw new Error("GLB clean não apareceu corretamente na biblioteca do criador.");
