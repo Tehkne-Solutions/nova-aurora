@@ -1,67 +1,189 @@
-import baseStyles from "./game.module.css";
-import polishStyles from "./polish.module.css";
+import styles from "./character-art.module.css";
 import type { Facing } from "./world-presentation";
 
-const styles = { ...baseStyles, ...polishStyles };
+type CharacterVariant = "founder" | "mara" | "joao" | "lina";
 
 type Props = Readonly<{
   facing: Facing;
   moving: boolean;
   label?: string;
   compact?: boolean;
-  variant?: "founder" | "mara" | "joao" | "lina";
+  portrait?: boolean;
+  variant?: CharacterVariant;
 }>;
 
-const palettes = {
-  founder: { coat: "#54d6b0", coatDark: "#237f72", hair: "#182334", accent: "#d7f78f" },
-  mara: { coat: "#db7d66", coatDark: "#70406b", hair: "#251d31", accent: "#ffd19a" },
-  joao: { coat: "#c7b14d", coatDark: "#39734d", hair: "#4b3524", accent: "#e6ef9d" },
-  lina: { coat: "#9870df", coatDark: "#354a87", hair: "#1c1d42", accent: "#a9edff" }
-} as const;
+type Palette = Readonly<{
+  skin: string;
+  skinShadow: string;
+  hair: string;
+  hairLight: string;
+  coat: string;
+  coatDark: string;
+  trim: string;
+  trousers: string;
+  shoes: string;
+  accessory: string;
+}>;
+
+const palettes: Record<CharacterVariant, Palette> = {
+  founder: {
+    skin: "#d8a17d",
+    skinShadow: "#b9775d",
+    hair: "#172333",
+    hairLight: "#31465d",
+    coat: "#4db596",
+    coatDark: "#266f66",
+    trim: "#d4d88c",
+    trousers: "#27394b",
+    shoes: "#101821",
+    accessory: "#d7a95b"
+  },
+  mara: {
+    skin: "#bd7d62",
+    skinShadow: "#925947",
+    hair: "#261a2c",
+    hairLight: "#5c3b56",
+    coat: "#c96f5d",
+    coatDark: "#70405c",
+    trim: "#e6b47e",
+    trousers: "#3a2f46",
+    shoes: "#18131d",
+    accessory: "#79b6a1"
+  },
+  joao: {
+    skin: "#a96f4e",
+    skinShadow: "#7a4936",
+    hair: "#3b2b20",
+    hairLight: "#6d4b34",
+    coat: "#b9a442",
+    coatDark: "#37634b",
+    trim: "#e5dc8a",
+    trousers: "#293e38",
+    shoes: "#171c19",
+    accessory: "#b76545"
+  },
+  lina: {
+    skin: "#d2a184",
+    skinShadow: "#aa725e",
+    hair: "#1b1f3c",
+    hairLight: "#3f4e7a",
+    coat: "#8667ca",
+    coatDark: "#354a78",
+    trim: "#9fd6df",
+    trousers: "#293250",
+    shoes: "#14182a",
+    accessory: "#dfaa61"
+  }
+};
+
+function eyeX(facing: Facing, side: "left" | "right"): number {
+  if (facing === "east") return side === "left" ? 64 : 68;
+  if (facing === "west") return side === "left" ? 50 : 54;
+  return side === "left" ? 53 : 67;
+}
+
+function badgePath(variant: CharacterVariant): string {
+  if (variant === "mara") return "M57 76 l6 -5 6 5 -6 8 z";
+  if (variant === "joao") return "M57 73 h12 v9 h-12 z";
+  if (variant === "lina") return "M63 70 l7 7 -7 7 -7 -7 z";
+  return "M57 75 q6 -8 12 0 q-6 9 -12 0";
+}
 
 export function CharacterSprite({
   facing,
   moving,
   label = "Personagem",
   compact = false,
+  portrait = false,
   variant = "founder"
 }: Props) {
   const palette = palettes[variant];
   const faceVisible = facing !== "north";
-  const side = facing === "east" ? 1 : facing === "west" ? -1 : 0;
+  const profile = facing === "east" || facing === "west";
+  const mirror = facing === "west" ? -1 : 1;
+  const headShift = facing === "east" ? 4 : facing === "west" ? -4 : 0;
+  const viewBox = portrait ? "20 2 80 105" : "0 0 120 160";
 
   return (
     <svg
       aria-label={label}
-      className={`${styles.characterSprite} ${moving ? styles.characterMoving : ""} ${compact ? styles.characterCompact : ""}`}
+      className={`${styles.characterSprite} ${moving ? styles.characterMoving : ""} ${compact ? styles.characterCompact : ""} ${portrait ? styles.characterPortrait : ""}`}
       role="img"
-      viewBox="0 0 82 112"
+      viewBox={viewBox}
     >
-      <ellipse className={styles.characterShadow} cx="41" cy="102" rx="24" ry="7" />
+      {!portrait && <ellipse className={styles.characterShadow} cx="60" cy="148" rx="34" ry="8" />}
+
       <g className={styles.characterLegs}>
-        <path d="M28 75 L39 75 L37 101 L24 101 Z" fill={palette.coatDark} />
-        <path d="M43 75 L54 75 L58 101 L45 101 Z" fill={palette.coatDark} />
-        <path d="M22 99 H39 V106 H20 Q18 102 22 99" fill="#111827" />
-        <path d="M44 99 H61 Q65 102 62 106 H45 Z" fill="#111827" />
+        <g className={styles.characterLegLeft}>
+          <path d="M39 108 L57 108 L54 142 L36 142 Z" fill={palette.trousers} stroke="#152030" strokeWidth="3.5" />
+          <path d="M34 139 H55 V148 H31 Q29 143 34 139" fill={palette.shoes} />
+          <path d="M39 112 H55" stroke={palette.trim} strokeWidth="2" opacity=".42" />
+        </g>
+        <g className={styles.characterLegRight}>
+          <path d="M63 108 L81 108 L85 142 L66 142 Z" fill={palette.trousers} stroke="#152030" strokeWidth="3.5" />
+          <path d="M65 139 H87 Q92 143 88 148 H66 Z" fill={palette.shoes} />
+          <path d="M65 112 H81" stroke={palette.trim} strokeWidth="2" opacity=".42" />
+        </g>
       </g>
-      <g className={styles.characterBody}>
-        <path d="M22 42 Q41 32 60 42 L57 80 Q41 89 25 80 Z" fill={palette.coat} stroke="#152034" strokeWidth="4" />
-        <path d="M41 39 V82" stroke={palette.accent} strokeLinecap="round" strokeWidth="3" opacity=".75" />
-        <path d="M22 48 L10 68 L18 74 L29 57" fill={palette.coatDark} stroke="#152034" strokeWidth="4" />
-        <path d="M60 48 L72 68 L64 74 L53 57" fill={palette.coatDark} stroke="#152034" strokeWidth="4" />
+
+      <g className={`${styles.characterBody} ${styles.characterBreath}`}>
+        <path d="M34 62 Q60 49 86 62 L83 111 Q60 124 37 111 Z" fill={palette.coatDark} stroke="#152030" strokeWidth="4" />
+        <path d="M39 62 Q60 54 81 62 L77 104 Q60 113 43 104 Z" fill={palette.coat} />
+        <path d="M59 59 L61 108" stroke={palette.trim} strokeLinecap="round" strokeWidth="3" opacity=".82" />
+        <path d="M44 68 Q60 76 76 68" fill="none" stroke="#ffffff2e" strokeWidth="2" />
+        <path d="M49 101 Q60 106 71 101" fill="none" stroke="#10182766" strokeWidth="2" />
+        <path d={badgePath(variant)} fill={palette.accessory} stroke="#172233" strokeWidth="1.6" />
       </g>
-      <g className={styles.characterHead} transform={`translate(${side * 2} 0)`}>
-        <ellipse cx="41" cy="29" rx="17" ry="19" fill="#d8a17d" stroke="#152034" strokeWidth="4" />
-        <path d="M24 29 Q23 8 42 8 Q61 8 59 31 Q51 19 28 22 Z" fill={palette.hair} />
+
+      <g className={styles.characterArms}>
+        <g className={styles.characterArmLeft}>
+          <path d="M36 67 Q25 75 20 94 L29 100 L45 77" fill={palette.coatDark} stroke="#152030" strokeWidth="4" />
+          <path d="M20 92 Q18 102 27 106 Q34 103 30 97" fill={palette.skin} stroke="#152030" strokeWidth="3" />
+        </g>
+        <g className={styles.characterArmRight}>
+          <path d="M84 67 Q95 75 100 94 L91 100 L75 77" fill={palette.coatDark} stroke="#152030" strokeWidth="4" />
+          <path d="M100 92 Q102 102 93 106 Q86 103 90 97" fill={palette.skin} stroke="#152030" strokeWidth="3" />
+        </g>
+      </g>
+
+      <g className={styles.characterHead} transform={`translate(${headShift} 0)`}>
+        <path d="M43 49 Q60 57 77 49 L74 65 Q60 72 46 65 Z" fill={palette.skinShadow} opacity=".35" />
+        <ellipse cx="60" cy="43" rx={profile ? "18" : "20"} ry="23" fill={palette.skin} stroke="#152030" strokeWidth="4" />
+        <path
+          d={
+            facing === "north"
+              ? "M39 47 Q37 14 61 14 Q84 14 81 50 Q70 33 42 37 Z"
+              : profile
+                ? mirror > 0
+                  ? "M40 45 Q40 16 62 14 Q80 15 82 36 Q73 25 54 26 Q48 33 40 45 Z"
+                  : "M80 45 Q80 16 58 14 Q40 15 38 36 Q47 25 66 26 Q72 33 80 45 Z"
+                : "M39 45 Q37 15 60 13 Q84 14 81 47 Q72 27 45 28 Z"
+          }
+          fill={palette.hair}
+        />
+        <path d="M44 25 Q58 14 76 25" fill="none" stroke={palette.hairLight} strokeLinecap="round" strokeWidth="4" opacity=".75" />
+        {variant === "mara" && <path d="M77 27 Q91 42 79 62" fill="none" stroke={palette.hair} strokeLinecap="round" strokeWidth="8" />}
+        {variant === "lina" && <path d="M42 29 Q30 45 41 61 M78 29 Q90 45 79 61" fill="none" stroke={palette.hair} strokeLinecap="round" strokeWidth="7" />}
+        {variant === "joao" && <path d="M47 22 Q60 8 75 22" fill="none" stroke={palette.hairLight} strokeLinecap="round" strokeWidth="5" />}
+
         {faceVisible && (
           <>
-            <circle cx={side > 0 ? "45" : side < 0 ? "34" : "35"} cy="30" r="2" fill="#172033" />
-            {side === 0 && <circle cx="47" cy="30" r="2" fill="#172033" />}
-            <path d={side === 0 ? "M36 39 Q41 42 46 39" : "M38 39 Q42 41 46 38"} fill="none" stroke="#8a4f42" strokeLinecap="round" strokeWidth="2" />
+            <path d={`M${eyeX(facing, "left") - 4} 41 Q${eyeX(facing, "left")} 38 ${eyeX(facing, "left") + 4} 41`} fill="none" stroke="#422e2d" strokeWidth="2" />
+            {!profile && <path d={`M${eyeX(facing, "right") - 4} 41 Q${eyeX(facing, "right")} 38 ${eyeX(facing, "right") + 4} 41`} fill="none" stroke="#422e2d" strokeWidth="2" />}
+            <circle cx={eyeX(facing, "left")} cy="42" r="2.1" fill="#182130" />
+            {!profile && <circle cx={eyeX(facing, "right")} cy="42" r="2.1" fill="#182130" />}
+            <path d={profile ? "M59 45 L65 49 L60 50" : "M60 44 L58 50 L62 50"} fill="none" stroke={palette.skinShadow} strokeLinecap="round" strokeWidth="1.8" />
+            <path d={profile ? "M58 56 Q63 59 68 55" : "M53 56 Q60 61 67 56"} fill="none" stroke="#874d45" strokeLinecap="round" strokeWidth="2" />
           </>
         )}
       </g>
-      <path className={styles.characterGlow} d="M18 88 Q41 102 64 88" fill="none" stroke={palette.accent} strokeLinecap="round" strokeWidth="2" />
+
+      <g className={styles.characterAccessories}>
+        {variant === "founder" && <path d="M79 73 Q92 78 91 93" fill="none" stroke={palette.accessory} strokeWidth="3" strokeLinecap="round" />}
+        {variant === "mara" && <><circle cx="46" cy="50" r="2.4" fill={palette.accessory} /><circle cx="75" cy="50" r="2.4" fill={palette.accessory} /></>}
+        {variant === "joao" && <path d="M42 63 Q60 70 78 63" fill="none" stroke={palette.accessory} strokeWidth="3" />}
+        {variant === "lina" && <path d="M47 65 H73" stroke={palette.accessory} strokeWidth="3" strokeLinecap="round" />}
+      </g>
     </svg>
   );
 }
