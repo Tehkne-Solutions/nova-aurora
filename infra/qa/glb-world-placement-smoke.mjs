@@ -29,6 +29,26 @@ function padded(buffer, fill = 0x20) {
   return padding === 0 ? buffer : Buffer.concat([buffer, Buffer.alloc(padding, fill)]);
 }
 
+function glbFromJson(document, binary = null) {
+  const json = padded(Buffer.from(JSON.stringify(document), "utf8"));
+  const bin = binary ? padded(binary, 0) : null;
+  const length = 12 + 8 + json.length + (bin ? 8 + bin.length : 0);
+  const glb = Buffer.alloc(length);
+  glb.write("glTF", 0, "ascii");
+  glb.writeUInt32LE(2, 4);
+  glb.writeUInt32LE(length, 8);
+  glb.writeUInt32LE(json.length, 12);
+  glb.writeUInt32LE(0x4e4f534a, 16);
+  json.copy(glb, 20);
+  if (bin) {
+    const binHeader = 20 + json.length;
+    glb.writeUInt32LE(bin.length, binHeader);
+    glb.writeUInt32LE(0x004e4942, binHeader + 4);
+    bin.copy(glb, binHeader + 8);
+  }
+  return glb;
+}
+
 function triangleGlb() {
   const positions = Buffer.alloc(36);
   const vertices = [
@@ -37,7 +57,6 @@ function triangleGlb() {
     0, 0.75, 0
   ];
   vertices.forEach((value, index) => positions.writeFloatLE(value, index * 4));
-  const binary = padded(positions, 0);
   const document = {
     asset: { version: "2.0", generator: "Nova Aurora GLB QA · Tehkné Solutions" },
     scene: 0,
@@ -49,20 +68,20 @@ function triangleGlb() {
     bufferViews: [{ buffer: 0, byteOffset: 0, byteLength: positions.length, target: 34962 }],
     buffers: [{ byteLength: positions.length }]
   };
-  const json = padded(Buffer.from(JSON.stringify(document), "utf8"));
-  const length = 12 + 8 + json.length + 8 + binary.length;
-  const glb = Buffer.alloc(length);
-  glb.write("glTF", 0, "ascii");
-  glb.writeUInt32LE(2, 4);
-  glb.writeUInt32LE(length, 8);
-  glb.writeUInt32LE(json.length, 12);
-  glb.writeUInt32LE(0x4e4f534a, 16);
-  json.copy(glb, 20);
-  const binHeader = 20 + json.length;
-  glb.writeUInt32LE(binary.length, binHeader);
-  glb.writeUInt32LE(0x004e4942, binHeader + 4);
-  binary.copy(glb, binHeader + 8);
-  return glb;
+  return glbFromJson(document, positions);
+}
+
+function unsafeExternalResourceGlb() {
+  return glbFromJson({
+    asset: { version: "2.0", generator: "Nova Aurora unsafe structural QA" },
+    buffers: [{ byteLength: 36, uri: "https://example.invalid/external.bin" }],
+    scene: 0,
+    scenes: [{ nodes: [0] }],
+    nodes: [{ mesh: 0 }],
+    meshes: [{ primitives: [{ attributes: { POSITION: 0 }, mode: 4 }] }],
+    accessors: [{ bufferView: 0, componentType: 5126, count: 3, type: "VEC3" }],
+    bufferViews: [{ buffer: 0, byteOffset: 0, byteLength: 36 }]
+  });
 }
 
 const login = await requireJson("/v1/auth/login", {
@@ -75,6 +94,35 @@ if (!token) throw new Error("Login de QA GLB não retornou bearer token.");
 const authHeaders = { authorization: `Bearer ${token}` };
 
 const nonce = randomUUID();
+
+const unsafeBytes = unsafeExternalResourceGlb();
+if (unsafeBytes.subarray(0, 4).toString("ascii") !== "glTF" || unsafeBytes.readUInt32LE(4) !== 2) {
+  throw new Error("Fixture insegura não preservou magic/version GLB válidos.");
+}
+const unsafeSha = createHash("sha256").update(unsafeBytes).digest("hex");
+const unsafeSession = await requireJson("/v1/ugc/assets/files/uploads", {
+  method: "POST",
+  headers: { ...authHeaders, "content-type": "application/json" },
+  body: JSON.stringify({
+    fileName: `unsafe-external-${nonce}.glb`,
+    contentType: "model/gltf-binary",
+    sizeBytes: unsafeBytes.length,
+    sha256: unsafeSha
+  })
+});
+const unsafeUpload = unsafeSession?.upload;
+if (!unsafeUpload?.id || !unsafeUpload?.path) throw new Error("Sessão GLB insegura não foi criada para a prova estrutural.");
+const unsafeResult = await requestJson(unsafeUpload.path, {
+  method: "POST",
+  headers: { ...authHeaders, "content-type": "application/octet-stream" },
+  body: new Uint8Array(unsafeBytes)
+});
+if (unsafeResult.response.status !== 400 || !String(unsafeResult.payload?.message ?? "").includes("glb-structural")) {
+  throw new Error(`GLB magic-valid com recurso externo não foi rejeitado estruturalmente como esperado: ${unsafeResult.response.status} ${unsafeResult.text.slice(0, 600)}`);
+}
+const unsafePublic = await fetch(`${apiUrl}/v1/ugc/assets/files/${unsafeUpload.id}`);
+if (unsafePublic.status !== 404) throw new Error(`GLB estruturalmente rejeitado ficou público (${unsafePublic.status}).`);
+
 const glbBytes = triangleGlb();
 const glbSha = createHash("sha256").update(glbBytes).digest("hex");
 const session = await requireJson("/v1/ugc/assets/files/uploads", {
@@ -104,6 +152,9 @@ const asset = uploadResult.payload?.asset;
 if (!asset || asset.uploadId !== upload.id || asset.sha256 !== glbSha || asset.contentType !== "model/gltf-binary" || asset.malwareScan !== "clean") {
   throw new Error("GLB promovido não confirmou SHA-256, MIME e malwareScan=clean.");
 }
+if (asset.glbSecurity?.version !== 2 || asset.glbSecurity?.primitives !== 1 || asset.glbSecurity?.totalVertices !== 3 || asset.glbSecurity?.externalResources !== 0) {
+  throw new Error("GLB limpo não retornou relatório estrutural seguro esperado.");
+}
 
 const publicAsset = await fetch(`${apiUrl}/v1/ugc/assets/files/${upload.id}`);
 if (!publicAsset.ok) throw new Error(`GET público do GLB clean falhou (${publicAsset.status}).`);
@@ -117,6 +168,9 @@ const library = await requireJson("/v1/ugc/assets/library/me?status=clean&limit=
 const libraryGlb = library?.assets?.find((entry) => entry.id === upload.id);
 if (!libraryGlb || libraryGlb.contentType !== "model/gltf-binary" || libraryGlb.verifiedSha256 !== glbSha) {
   throw new Error("GLB clean não apareceu corretamente na biblioteca do criador.");
+}
+if (library?.assets?.some((entry) => entry.id === unsafeUpload.id)) {
+  throw new Error("GLB estruturalmente rejeitado apareceu na biblioteca clean.");
 }
 
 const worldLocations = await requireJson("/v1/ugc/world/locations");
@@ -179,6 +233,10 @@ const report = {
   glbSizeBytes: glbBytes.length,
   glbVersion: 2,
   malwareScan: "clean",
+  glbStructuralValidation: asset.glbSecurity,
+  magicValidUnsafeGlbBlocked: true,
+  unsafeGlbPublicReadBlocked: true,
+  unsafeGlbCleanLibraryBlocked: true,
   publicReadbackExact: true,
   creatorLibraryVisible: true,
   worldPlacementId: placementId,
