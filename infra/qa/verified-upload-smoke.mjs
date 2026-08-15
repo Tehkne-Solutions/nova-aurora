@@ -50,7 +50,7 @@ if (!upload?.id || !upload?.path || upload?.method !== "POST") {
 
 const verifyResponse = await fetch(`${apiUrl}${upload.path}`, {
   method: "POST",
-  headers: { "content-type": "application/octet-stream" },
+  headers: { ...authHeaders, "content-type": "application/octet-stream" },
   body: new Uint8Array(bytes)
 });
 const verifyText = await verifyResponse.text();
@@ -111,6 +111,7 @@ const report = {
   canonicalUri: verified.assetManifestUri,
   storageReadbackExact: true,
   atomicBlueprintBinding: true,
+  authenticatedContentUpload: true,
   signature: "Tehkné Solutions"
 };
 await writeFile(reportFile, JSON.stringify(report, null, 2));
