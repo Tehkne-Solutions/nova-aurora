@@ -18,6 +18,7 @@ type RequestIdentity = Readonly<{
 }>;
 
 const requestIdentities = new WeakMap<FastifyRequest, RequestIdentity>();
+const VERIFIED_MANIFEST_PATH = /^\/v1\/ugc\/assets\/manifests\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function isPublicIdentityPath(path: string): boolean {
   return path === "/v1/auth/login"
@@ -29,6 +30,10 @@ function isPublicIdentityPath(path: string): boolean {
     || path === "/v1/trust/reports"
     || path === "/v1/trust/guardian/decision"
     || path === "/v1/status/public";
+}
+
+function isPublicVerifiedManifest(method: string, path: string): boolean {
+  return (method === "GET" || method === "HEAD") && VERIFIED_MANIFEST_PATH.test(path);
 }
 
 export async function registerSecurity(app: FastifyInstance): Promise<void> {
@@ -54,7 +59,12 @@ export async function registerSecurity(app: FastifyInstance): Promise<void> {
       );
     }
 
-    if (isPublicIdentityPath(path) || path.startsWith("/v1/auth/") || path.startsWith("/v1/live/")) {
+    if (
+      isPublicIdentityPath(path)
+      || isPublicVerifiedManifest(request.method, path)
+      || path.startsWith("/v1/auth/")
+      || path.startsWith("/v1/live/")
+    ) {
       return;
     }
 
@@ -103,12 +113,18 @@ export async function registerSecurity(app: FastifyInstance): Promise<void> {
     });
   });
 
-  app.addHook("onSend", async (_request, reply, payload) => {
+  app.addHook("onSend", async (request, reply, payload) => {
+    const path = request.url.split("?", 1)[0] ?? request.url;
     reply.header("x-content-type-options", "nosniff");
     reply.header("x-frame-options", "DENY");
     reply.header("referrer-policy", "no-referrer");
     reply.header("permissions-policy", "camera=(), microphone=(), geolocation=()");
-    reply.header("cache-control", "no-store");
+    reply.header(
+      "cache-control",
+      isPublicVerifiedManifest(request.method, path)
+        ? "public,max-age=31536000,immutable"
+        : "no-store"
+    );
     reply.header(
       "content-security-policy",
       "default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'"
@@ -116,3 +132,5 @@ export async function registerSecurity(app: FastifyInstance): Promise<void> {
     return payload;
   });
 }
+
+// Tehkné Solutions
