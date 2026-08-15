@@ -117,7 +117,7 @@ const unsafeResult = await requestJson(unsafeUpload.path, {
   headers: { ...authHeaders, "content-type": "application/octet-stream" },
   body: new Uint8Array(unsafeBytes)
 });
-if (unsafeResult.response.status !== 400 || !String(unsafeResult.payload?.message ?? "").includes("glb-structural")) {
+if (unsafeResult.response.status !== 400 || !String(unsafeResult.payload?.message ?? "").includes("external-resource")) {
   throw new Error(`GLB magic-valid com recurso externo não foi rejeitado estruturalmente como esperado: ${unsafeResult.response.status} ${unsafeResult.text.slice(0, 600)}`);
 }
 const unsafePublic = await fetch(`${apiUrl}/v1/ugc/assets/files/${unsafeUpload.id}`);
@@ -235,6 +235,7 @@ const report = {
   malwareScan: "clean",
   glbStructuralValidation: asset.glbSecurity,
   magicValidUnsafeGlbBlocked: true,
+  unsafeGlbStructuralCode: "external-resource",
   unsafeGlbPublicReadBlocked: true,
   unsafeGlbCleanLibraryBlocked: true,
   publicReadbackExact: true,
