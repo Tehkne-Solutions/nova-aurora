@@ -6,13 +6,14 @@ import { CityWorld } from "./city-world";
 import { EnvironmentControls } from "./environment-controls";
 import baseStyles from "./game.module.css";
 import polishStyles from "./polish.module.css";
+import experienceStyles from "./experience-v2.module.css";
 import { HarvestMinigame } from "./harvest-minigame";
 import { InteriorScene } from "./interior-scene";
 import { NpcDialogue } from "./npc-dialogue";
 import type { CityState, ExperienceState, HarvestAction, HarvestSession, Npc } from "./types";
 import { DEFAULT_WORLD_SETTINGS, nextLocationByDirection, resolveFacing, resolveTimePhase, supportsInterior, timeLabel, weatherLabel, type Facing, type WorldSettings } from "./world-presentation";
 
-const styles = { ...baseStyles, ...polishStyles };
+const styles = { ...baseStyles, ...polishStyles, ...experienceStyles };
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
 const ALICE = "alice@nova-aurora.local";
 const BOB = "bob@nova-aurora.local";
