@@ -1,6 +1,9 @@
 import Link from "next/link";
 import { CityGame } from "./city-game";
-import styles from "./game.module.css";
+import baseStyles from "./game.module.css";
+import shellStyles from "./game-shell-v2.module.css";
+
+const styles = { ...baseStyles, ...shellStyles };
 
 export const dynamic = "force-dynamic";
 
@@ -9,10 +12,10 @@ export default function GamePage() {
     <main className={styles.gameShell}>
       <header className={styles.topbar}>
         <div>
-          <p className={styles.eyebrow}>NOVA AURORA · CITY GAMEPLAY</p>
+          <p className={styles.eyebrow}>NOVA AURORA · MUNDO VIVO</p>
           <h1>Construa sua primeira cadeia de valor.</h1>
         </div>
-        <nav>
+        <nav aria-label="Sistemas de Nova Aurora">
           <Link href="/">Início</Link>
           <Link href="/business">Empresas</Link>
           <Link href="/management">Gestão</Link>
@@ -25,3 +28,5 @@ export default function GamePage() {
     </main>
   );
 }
+
+// Tehkné Solutions
