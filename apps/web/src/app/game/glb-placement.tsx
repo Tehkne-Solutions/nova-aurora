@@ -62,7 +62,6 @@ type GltfDocument = Readonly<{
 
 type Drawable = Readonly<{
   positions: Float32Array;
-  indices: Uint32Array | null;
   color: readonly [number, number, number, number];
 }>;
 
@@ -259,6 +258,22 @@ function readIndices(document: GltfDocument, bin: Uint8Array, accessorIndex: num
   return output;
 }
 
+function expandIndexedPositions(positions: Float32Array, indices: Uint32Array): Float32Array {
+  const expanded = new Float32Array(indices.length * 3);
+  for (let index = 0; index < indices.length; index += 1) {
+    const vertex = indices[index]!;
+    const sourceOffset = vertex * 3;
+    if (sourceOffset + 2 >= positions.length) {
+      throw new Error("Índice GLB referencia POSITION inexistente.");
+    }
+    const targetOffset = index * 3;
+    expanded[targetOffset] = positions[sourceOffset]!;
+    expanded[targetOffset + 1] = positions[sourceOffset + 1]!;
+    expanded[targetOffset + 2] = positions[sourceOffset + 2]!;
+  }
+  return expanded;
+}
+
 function primitiveColor(document: GltfDocument, materialIndex?: number): readonly [number, number, number, number] {
   const factor = materialIndex === undefined
     ? null
@@ -297,9 +312,14 @@ function buildDrawables(document: GltfDocument, bin: Uint8Array): Drawable[] {
           const point = transformPoint(world, [source[index]!, source[index + 1]!, source[index + 2]!]);
           transformed[index] = point[0]; transformed[index + 1] = point[1]; transformed[index + 2] = point[2];
         }
+        const renderPositions = primitive.indices === undefined
+          ? transformed
+          : expandIndexedPositions(transformed, readIndices(document, bin, primitive.indices));
+        if (renderPositions.length % 9 !== 0) {
+          throw new Error("Primitiva TRIANGLES possui quantidade de vértices inválida.");
+        }
         drawables.push({
-          positions: transformed,
-          indices: primitive.indices === undefined ? null : readIndices(document, bin, primitive.indices),
+          positions: renderPositions,
           color: primitiveColor(document, primitive.material)
         });
       }
@@ -387,14 +407,7 @@ function render(canvas: HTMLCanvasElement, drawables: readonly Drawable[], rotat
     if (!positionBuffer) throw new Error("Falha ao criar buffer de vértices.");
     gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
     gl.bufferData(gl.ARRAY_BUFFER, drawable.positions, gl.STATIC_DRAW);
-    let indexBuffer: WebGLBuffer | null = null;
-    if (drawable.indices) {
-      indexBuffer = gl.createBuffer();
-      if (!indexBuffer) throw new Error("Falha ao criar buffer de índices.");
-      gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, indexBuffer);
-      gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, drawable.indices, gl.STATIC_DRAW);
-    }
-    return { drawable, positionBuffer, indexBuffer };
+    return { drawable, positionBuffer };
   });
 
   const draw = () => {
@@ -419,12 +432,7 @@ function render(canvas: HTMLCanvasElement, drawables: readonly Drawable[], rotat
       gl.enableVertexAttribArray(positionLocation);
       gl.vertexAttribPointer(positionLocation, 3, gl.FLOAT, false, 0, 0);
       gl.uniform4fv(colorLocation, new Float32Array(resource.drawable.color));
-      if (resource.drawable.indices && resource.indexBuffer) {
-        gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, resource.indexBuffer);
-        gl.drawElements(gl.TRIANGLES, resource.drawable.indices.length, gl.UNSIGNED_INT, 0);
-      } else {
-        gl.drawArrays(gl.TRIANGLES, 0, resource.drawable.positions.length / 3);
-      }
+      gl.drawArrays(gl.TRIANGLES, 0, resource.drawable.positions.length / 3);
     }
   };
 
@@ -433,10 +441,7 @@ function render(canvas: HTMLCanvasElement, drawables: readonly Drawable[], rotat
   observer.observe(canvas);
   return () => {
     observer.disconnect();
-    for (const resource of resources) {
-      gl.deleteBuffer(resource.positionBuffer);
-      if (resource.indexBuffer) gl.deleteBuffer(resource.indexBuffer);
-    }
+    for (const resource of resources) gl.deleteBuffer(resource.positionBuffer);
     gl.deleteProgram(program);
   };
 }
