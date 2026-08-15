@@ -175,7 +175,12 @@ jobs:
             return 1
           }
 
-          docker rm -f nova-aurora-storage-ci
+          stop_storage_clean() {
+            docker stop --time 30 nova-aurora-storage-ci
+            docker rm nova-aurora-storage-ci
+          }
+
+          stop_storage_clean
           docker run --rm \
             -e CONFIRM_OBJECT_STORAGE_OFFLINE=OBJECT_STORAGE_IS_STOPPED \
             -e OBJECT_STORAGE_DATA_DIR=/data \
@@ -198,7 +203,7 @@ jobs:
             exit 1
           fi
 
-          docker rm -f nova-aurora-storage-ci
+          stop_storage_clean
           docker run --rm \
             -e CONFIRM_OBJECT_STORAGE_OFFLINE=OBJECT_STORAGE_IS_STOPPED \
             -e CONFIRM_OBJECT_STORAGE_RESTORE=RESTORE_NOVA_AURORA_OBJECT_STORAGE \
