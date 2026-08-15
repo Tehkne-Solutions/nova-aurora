@@ -1,7 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import styles from "./game.module.css";
+import { CharacterSprite } from "./character-sprite";
+import styles from "./dialogue-art.module.css";
 import type { Npc } from "./types";
 
 type Props = Readonly<{
@@ -9,23 +10,43 @@ type Props = Readonly<{
   onClose(): void;
 }>;
 
+function npcVariant(avatar: string): "mara" | "joao" | "lina" {
+  if (avatar === "joao") return "joao";
+  if (avatar === "lina") return "lina";
+  return "mara";
+}
+
 export function NpcDialogue({ npc, onClose }: Props) {
   const [line, setLine] = useState(0);
   const text = npc.dialogue[line] ?? "...";
   const isLast = line >= npc.dialogue.length - 1;
 
   return (
-    <div className={styles.dialogueOverlay} role="dialog" aria-modal="true">
-      <section className={styles.dialogueCard}>
-        <div className={`${styles.npcPortrait} ${styles[`npc_${npc.avatar}`] ?? ""}`}>
-          <span>{npc.name.slice(0, 1)}</span>
+    <div className={styles.overlay} role="dialog" aria-modal="true" aria-label={`Conversa com ${npc.name}`}>
+      <section className={styles.card}>
+        <div className={styles.portrait}>
+          <div className={styles.portraitArt}>
+            <CharacterSprite
+              facing="south"
+              label={`Retrato de ${npc.name}`}
+              moving={false}
+              portrait
+              variant={npcVariant(npc.avatar)}
+            />
+          </div>
+          <div className={styles.identity}>
+            <strong>{npc.name}</strong>
+            <span>{npc.roleTitle}</span>
+          </div>
         </div>
-        <div className={styles.dialogueContent}>
-          <p className={styles.actionLabel}>{npc.roleTitle}</p>
+
+        <div className={styles.content}>
+          <p className={styles.role}>CONVERSA · NOVA AURORA</p>
           <h2>{npc.name}</h2>
-          <p className={styles.dialogueText}>{text}</p>
-          <div className={styles.dialogueActions}>
-            <button className={styles.secondaryButton} onClick={onClose}>Encerrar</button>
+          <p className={styles.line}>{text}</p>
+          <div className={styles.progress}>{line + 1} / {Math.max(1, npc.dialogue.length)}</div>
+          <div className={styles.actions}>
+            <button className={styles.secondary} onClick={onClose}>Encerrar</button>
             <button
               onClick={() => {
                 if (isLast) onClose();
