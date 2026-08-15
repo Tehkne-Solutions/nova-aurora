@@ -5,6 +5,10 @@ const apiUrl = (process.env.API_URL ?? "http://127.0.0.1:4000").replace(/\/$/, "
 const reportFile = process.env.GLB_PLACEMENT_QA_REPORT ?? "glb-world-placement-report.json";
 const email = process.env.E2E_EMAIL ?? "alice@nova-aurora.local";
 const password = process.env.E2E_PASSWORD ?? "Aurora@2026";
+const normalMapPng = Buffer.from(
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+  "base64"
+);
 
 async function requestJson(path, init = {}) {
   const response = await fetch(`${apiUrl}${path}`, init);
@@ -50,25 +54,51 @@ function glbFromJson(document, binary = null) {
 }
 
 function triangleGlb() {
-  const positions = Buffer.alloc(36);
-  const vertices = [
-    -0.7, -0.55, 0,
-    0.7, -0.55, 0,
-    0, 0.75, 0
-  ];
-  vertices.forEach((value, index) => positions.writeFloatLE(value, index * 4));
+  const positionsOffset = 0;
+  const normalsOffset = 36;
+  const tangentsOffset = 72;
+  const uvOffset = 120;
+  const imageOffset = 144;
+  const binary = Buffer.alloc(imageOffset + normalMapPng.length);
+  const positions = [-0.7, -0.55, 0, 0.7, -0.55, 0, 0, 0.75, 0];
+  const normals = [0, 0, 1, 0, 0, 1, 0, 0, 1];
+  const tangents = [1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 1];
+  const uvs = [0, 0, 1, 0, 0.5, 1];
+  positions.forEach((value, index) => binary.writeFloatLE(value, positionsOffset + index * 4));
+  normals.forEach((value, index) => binary.writeFloatLE(value, normalsOffset + index * 4));
+  tangents.forEach((value, index) => binary.writeFloatLE(value, tangentsOffset + index * 4));
+  uvs.forEach((value, index) => binary.writeFloatLE(value, uvOffset + index * 4));
+  normalMapPng.copy(binary, imageOffset);
+
   const document = {
-    asset: { version: "2.0", generator: "Nova Aurora GLB QA · Tehkné Solutions" },
+    asset: { version: "2.0", generator: "Nova Aurora GLB Normal Map QA · Tehkné Solutions" },
     scene: 0,
     scenes: [{ nodes: [0] }],
     nodes: [{ mesh: 0 }],
-    meshes: [{ primitives: [{ attributes: { POSITION: 0 }, material: 0, mode: 4 }] }],
-    materials: [{ pbrMetallicRoughness: { baseColorFactor: [0.31, 0.74, 0.59, 1] } }],
-    accessors: [{ bufferView: 0, componentType: 5126, count: 3, type: "VEC3", min: [-0.7, -0.55, 0], max: [0.7, 0.75, 0] }],
-    bufferViews: [{ buffer: 0, byteOffset: 0, byteLength: positions.length, target: 34962 }],
-    buffers: [{ byteLength: positions.length }]
+    meshes: [{ primitives: [{ attributes: { POSITION: 0, NORMAL: 1, TANGENT: 2, TEXCOORD_0: 3 }, material: 0, mode: 4 }] }],
+    materials: [{
+      pbrMetallicRoughness: { baseColorFactor: [0.31, 0.74, 0.59, 1], metallicFactor: 0.12, roughnessFactor: 0.72 },
+      normalTexture: { index: 0, texCoord: 0, scale: 0.85 }
+    }],
+    accessors: [
+      { bufferView: 0, componentType: 5126, count: 3, type: "VEC3", min: [-0.7, -0.55, 0], max: [0.7, 0.75, 0] },
+      { bufferView: 1, componentType: 5126, count: 3, type: "VEC3" },
+      { bufferView: 2, componentType: 5126, count: 3, type: "VEC4" },
+      { bufferView: 3, componentType: 5126, count: 3, type: "VEC2" }
+    ],
+    bufferViews: [
+      { buffer: 0, byteOffset: positionsOffset, byteLength: 36, target: 34962 },
+      { buffer: 0, byteOffset: normalsOffset, byteLength: 36, target: 34962 },
+      { buffer: 0, byteOffset: tangentsOffset, byteLength: 48, target: 34962 },
+      { buffer: 0, byteOffset: uvOffset, byteLength: 24, target: 34962 },
+      { buffer: 0, byteOffset: imageOffset, byteLength: normalMapPng.length }
+    ],
+    buffers: [{ byteLength: binary.length }],
+    images: [{ bufferView: 4, mimeType: "image/png" }],
+    samplers: [{ magFilter: 9729, minFilter: 9729, wrapS: 33071, wrapT: 33071 }],
+    textures: [{ source: 0, sampler: 0 }]
   };
-  return glbFromJson(document, positions);
+  return glbFromJson(document, binary);
 }
 
 function unsafeExternalResourceGlb() {
@@ -129,7 +159,7 @@ const session = await requireJson("/v1/ugc/assets/files/uploads", {
   method: "POST",
   headers: { ...authHeaders, "content-type": "application/json" },
   body: JSON.stringify({
-    fileName: `world-triangle-${nonce}.glb`,
+    fileName: `world-normal-map-${nonce}.glb`,
     contentType: "model/gltf-binary",
     sizeBytes: glbBytes.length,
     sha256: glbSha
@@ -154,6 +184,15 @@ if (!asset || asset.uploadId !== upload.id || asset.sha256 !== glbSha || asset.c
 }
 if (asset.glbSecurity?.version !== 2 || asset.glbSecurity?.primitives !== 1 || asset.glbSecurity?.totalVertices !== 3 || asset.glbSecurity?.externalResources !== 0) {
   throw new Error("GLB limpo não retornou relatório estrutural seguro esperado.");
+}
+if (
+  asset.glbTangentSecurity?.version !== 1
+  || asset.glbTangentSecurity?.normalMappedPrimitives !== 1
+  || asset.glbTangentSecurity?.validatedVertices !== 3
+  || asset.glbTangentSecurity?.tangentAccessors !== 1
+  || asset.glbTangentSecurity?.generatedTangents !== 0
+) {
+  throw new Error(`GLB normal-mapped não retornou certificação tangent-space esperada: ${JSON.stringify(asset.glbTangentSecurity)}`);
 }
 
 const publicAsset = await fetch(`${apiUrl}/v1/ugc/assets/files/${upload.id}`);
@@ -234,6 +273,11 @@ const report = {
   glbVersion: 2,
   malwareScan: "clean",
   glbStructuralValidation: asset.glbSecurity,
+  glbTangentSecurity: asset.glbTangentSecurity,
+  normalMapEmbedded: true,
+  normalMapBytes: normalMapPng.length,
+  authoredTangentSpace: true,
+  generatedTangents: 0,
   magicValidUnsafeGlbBlocked: true,
   unsafeGlbStructuralCode: "external-resource",
   unsafeGlbPublicReadBlocked: true,
@@ -246,7 +290,7 @@ const report = {
   rotationYDegrees: 135,
   cleanGlbWorldPlacementVisible: true,
   removedGlbPlacementNotPublic: true,
-  rendererContract: "first-party-webgl-v1",
+  rendererContract: "first-party-webgl-pbr-normal-map-v7",
   signature: "Tehkné Solutions"
 };
 await writeFile(reportFile, JSON.stringify(report, null, 2));
