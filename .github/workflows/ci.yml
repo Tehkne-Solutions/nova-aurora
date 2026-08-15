@@ -137,6 +137,12 @@ jobs:
           cat web-smoke.log || true
           exit 1
 
+      - name: Verified manifest upload gate
+        env:
+          API_URL: http://127.0.0.1:4000
+          VERIFIED_UPLOAD_QA_REPORT: verified-upload-report.json
+        run: node infra/qa/verified-upload-smoke.mjs
+
       - name: Browser E2E and accessibility gate
         env:
           API_URL: http://127.0.0.1:4000
@@ -160,6 +166,7 @@ jobs:
         with:
           name: release-qa-evidence
           path: |
+            verified-upload-report.json
             release-browser-report.json
             release-load-report.json
             api-smoke.log
@@ -179,6 +186,7 @@ jobs:
           node --check infra/docker/migrate-and-secure.mjs
           node --check infra/qa/browser-e2e.mjs
           node --check infra/qa/load-smoke.mjs
+          node --check infra/qa/verified-upload-smoke.mjs
           sh -n infra/backup/backup.sh
           sh -n infra/backup/restore.sh
           sh -n infra/backup/verify.sh
@@ -247,6 +255,10 @@ jobs:
             -v "$RUNNER_TEMP/nova-aurora-secrets/postgres_password:/run/secrets/postgres_password:ro" \
             postgres:17-alpine /bin/sh /opt/nova-aurora/verify.sh "/backups/$(basename "$backup_file")"
 
+      - name: Capture object storage diagnostics
+        if: failure()
+        run: docker logs nova-aurora-storage-ci > object-storage-ci.log 2>&1 || true
+
       - name: Upload infrastructure diagnostics
         if: failure()
         uses: actions/upload-artifact@v4
@@ -259,6 +271,7 @@ jobs:
             build.log
             api-smoke.log
             web-smoke.log
+            object-storage-ci.log
 
       - name: Stop object storage
         if: always()
