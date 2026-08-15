@@ -13,9 +13,10 @@ function padded(buffer: Buffer, fill = 0x20): Buffer {
   return padding === 0 ? buffer : Buffer.concat([buffer, Buffer.alloc(padding, fill)]);
 }
 
-function makeGlb(document: JsonObject, binary = Buffer.alloc(0)): Buffer {
+function makeGlb(document: JsonObject, binary: Uint8Array = new Uint8Array(0)): Buffer {
   const json = padded(Buffer.from(JSON.stringify(document), "utf8"));
-  const bin = binary.length > 0 ? padded(binary, 0) : Buffer.alloc(0);
+  const binaryBuffer = Buffer.from(binary);
+  const bin = binaryBuffer.length > 0 ? padded(binaryBuffer, 0) : Buffer.alloc(0);
   const total = 12 + 8 + json.length + (bin.length > 0 ? 8 + bin.length : 0);
   const glb = Buffer.alloc(total);
   glb.write("glTF", 0, "ascii");
