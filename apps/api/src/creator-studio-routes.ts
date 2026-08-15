@@ -5,6 +5,7 @@ import { requireActor } from "./auth-context.js";
 import { registerCreatorUgcStudioRoutes } from "./creator-ugc-studio-routes.js";
 import { registerUgcAssetLibraryRoutes } from "./ugc-asset-library-routes.js";
 import { registerUgcBinaryAssetRoutes } from "./ugc-binary-asset-routes.js";
+import { registerUgcManagedManifestRoutes } from "./ugc-managed-manifest-routes.js";
 
 const economySql = db();
 
@@ -63,6 +64,7 @@ export async function registerCreatorStudioRoutes(app: FastifyInstance): Promise
   await registerCreatorUgcStudioRoutes(app);
   await registerUgcBinaryAssetRoutes(app);
   await registerUgcAssetLibraryRoutes(app);
+  await registerUgcManagedManifestRoutes(app);
 
   app.get("/v1/creator/content/me", async (request) => {
     const actor = await requireActor(app, request);
