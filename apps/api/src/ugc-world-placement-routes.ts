@@ -6,6 +6,11 @@ import { requireActor } from "./auth-context.js";
 
 const economySql = db();
 const IMAGE_CONTENT_TYPES = ["image/png", "image/jpeg", "image/webp"] as const;
+const GLB_CONTENT_TYPE = "model/gltf-binary" as const;
+const RENDERABLE_CONTENT_TYPES = [...IMAGE_CONTENT_TYPES, GLB_CONTENT_TYPE] as const;
+
+type RenderableContentType = typeof RENDERABLE_CONTENT_TYPES[number];
+type RenderMode = "image-billboard-v1" | "glb-model-v1";
 
 const placementQuerySchema = z.object({
   locationCode: z.string().trim().min(1).max(64).optional(),
@@ -18,7 +23,8 @@ const createPlacementSchema = z.object({
   label: z.string().trim().min(1).max(80),
   offsetX: z.number().int().min(-120).max(120).default(0),
   offsetY: z.number().int().min(-140).max(80).default(-70),
-  scalePercent: z.number().int().min(50).max(180).default(100)
+  scalePercent: z.number().int().min(50).max(180).default(100),
+  rotationYDegrees: z.number().int().min(0).max(359).default(0)
 });
 
 function assetPath(assetId: string): string {
@@ -30,8 +36,17 @@ function assetUri(assetId: string): string | null {
   return base.startsWith("https://") ? `${base}${assetPath(assetId)}` : null;
 }
 
+function renderMode(contentType: string): RenderMode {
+  return contentType === GLB_CONTENT_TYPE ? "glb-model-v1" : "image-billboard-v1";
+}
+
+function isRenderableContentType(value: string): value is RenderableContentType {
+  return RENDERABLE_CONTENT_TYPES.includes(value as RenderableContentType);
+}
+
 function serializePlacement(row: Record<string, unknown>) {
   const assetId = String(row.asset_upload_id);
+  const contentType = String(row.content_type);
   return {
     id: String(row.id),
     ownerUserId: String(row.owner_user_id),
@@ -42,7 +57,9 @@ function serializePlacement(row: Record<string, unknown>) {
     offsetX: Number(row.offset_x),
     offsetY: Number(row.offset_y),
     scalePercent: Number(row.scale_percent),
-    contentType: String(row.content_type),
+    rotationYDegrees: Number(row.rotation_y_degrees ?? 0),
+    contentType,
+    renderMode: renderMode(contentType),
     fileName: String(row.file_name),
     sha256: String(row.verified_sha256),
     assetPath: assetPath(assetId),
@@ -78,7 +95,7 @@ export async function registerUgcWorldPlacementRoutes(app: FastifyInstance): Pro
     const rows = await economySql`
       SELECT placement.id,placement.owner_user_id,placement.asset_upload_id,
         placement.label,placement.offset_x,placement.offset_y,placement.scale_percent,
-        placement.created_at,placement.updated_at,
+        placement.rotation_y_degrees,placement.created_at,placement.updated_at,
         location.code location_code,location.name location_name,
         asset.file_name,asset.content_type,asset.verified_sha256
       FROM ugc_world_placements placement
@@ -86,7 +103,7 @@ export async function registerUgcWorldPlacementRoutes(app: FastifyInstance): Pro
       JOIN ugc_binary_asset_upload_sessions asset ON asset.id=placement.asset_upload_id
       WHERE placement.status='active'
         AND asset.status='clean'
-        AND asset.content_type IN ('image/png','image/jpeg','image/webp')
+        AND asset.content_type IN ('image/png','image/jpeg','image/webp','model/gltf-binary')
         AND (${query.locationCode ?? null}::text IS NULL OR location.code=${query.locationCode ?? null})
       ORDER BY location.code,placement.created_at,placement.id
       LIMIT ${query.limit}
@@ -94,7 +111,8 @@ export async function registerUgcWorldPlacementRoutes(app: FastifyInstance): Pro
     return {
       placements: rows.map((row) => serializePlacement(row)),
       filter: { locationCode: query.locationCode ?? null, limit: query.limit },
-      renderMode: "image-billboard-v1",
+      renderMode: "image-billboard-v1" as const,
+      renderModes: ["image-billboard-v1", "glb-model-v1"] as const,
       signature: "Tehkné Solutions"
     };
   });
@@ -104,7 +122,7 @@ export async function registerUgcWorldPlacementRoutes(app: FastifyInstance): Pro
     const rows = await economySql`
       SELECT placement.id,placement.owner_user_id,placement.asset_upload_id,
         placement.label,placement.offset_x,placement.offset_y,placement.scale_percent,
-        placement.created_at,placement.updated_at,
+        placement.rotation_y_degrees,placement.created_at,placement.updated_at,
         location.code location_code,location.name location_name,
         asset.file_name,asset.content_type,asset.verified_sha256
       FROM ugc_world_placements placement
@@ -113,7 +131,7 @@ export async function registerUgcWorldPlacementRoutes(app: FastifyInstance): Pro
       WHERE placement.owner_user_id=${actor.userId}::uuid
         AND placement.status='active'
         AND asset.status='clean'
-        AND asset.content_type IN ('image/png','image/jpeg','image/webp')
+        AND asset.content_type IN ('image/png','image/jpeg','image/webp','model/gltf-binary')
       ORDER BY placement.created_at DESC,placement.id DESC
       LIMIT 200
     `;
@@ -125,7 +143,7 @@ export async function registerUgcWorldPlacementRoutes(app: FastifyInstance): Pro
     const body = createPlacementSchema.parse(request.body);
     const placementId = randomUUID();
 
-    const row = await economySql.begin("isolation level serializable", async (tx) => {
+    const result = await economySql.begin("isolation level serializable", async (tx) => {
       const location = (await tx`
         SELECT id,code,name FROM city_locations WHERE code=${body.locationCode}
       `)[0];
@@ -144,8 +162,9 @@ export async function registerUgcWorldPlacementRoutes(app: FastifyInstance): Pro
       if (String(asset.status) !== "clean") {
         throw app.httpErrors.conflict("Somente assets limpos podem ser colocados no mundo.");
       }
-      if (!IMAGE_CONTENT_TYPES.includes(String(asset.content_type) as typeof IMAGE_CONTENT_TYPES[number])) {
-        throw app.httpErrors.badRequest("O renderer atual aceita PNG, JPEG e WebP. GLB entra no renderer 3D posterior.");
+      const contentType = String(asset.content_type);
+      if (!isRenderableContentType(contentType)) {
+        throw app.httpErrors.badRequest("O renderer atual aceita PNG, JPEG, WebP e GLB verificado.");
       }
 
       const count = Number((await tx`
@@ -159,32 +178,39 @@ export async function registerUgcWorldPlacementRoutes(app: FastifyInstance): Pro
         throw app.httpErrors.conflict("Limite inicial de 12 objetos ativos por criador e local atingido.");
       }
 
-      return (await tx`
+      const row = (await tx`
         INSERT INTO ugc_world_placements (
           id,owner_user_id,asset_upload_id,location_id,label,
-          offset_x,offset_y,scale_percent,status
+          offset_x,offset_y,scale_percent,rotation_y_degrees,status
         ) VALUES (
           ${placementId}::uuid,${actor.userId}::uuid,${body.assetId}::uuid,${String(location.id)}::uuid,
-          ${body.label},${body.offsetX},${body.offsetY},${body.scalePercent},'active'
+          ${body.label},${body.offsetX},${body.offsetY},${body.scalePercent},${body.rotationYDegrees},'active'
         )
-        RETURNING id,owner_user_id,asset_upload_id,label,offset_x,offset_y,scale_percent,created_at,updated_at
+        RETURNING id,owner_user_id,asset_upload_id,label,offset_x,offset_y,scale_percent,
+          rotation_y_degrees,created_at,updated_at
       `)[0]!;
+      return { row, contentType, fileName: String(asset.file_name), sha256: String(asset.verified_sha256) };
     });
 
     return {
       placement: {
-        id: String(row.id),
-        ownerUserId: String(row.owner_user_id),
-        assetId: String(row.asset_upload_id),
+        id: String(result.row.id),
+        ownerUserId: String(result.row.owner_user_id),
+        assetId: String(result.row.asset_upload_id),
         locationCode: body.locationCode,
-        label: String(row.label),
-        offsetX: Number(row.offset_x),
-        offsetY: Number(row.offset_y),
-        scalePercent: Number(row.scale_percent),
+        label: String(result.row.label),
+        offsetX: Number(result.row.offset_x),
+        offsetY: Number(result.row.offset_y),
+        scalePercent: Number(result.row.scale_percent),
+        rotationYDegrees: Number(result.row.rotation_y_degrees),
+        contentType: result.contentType,
+        renderMode: renderMode(result.contentType),
+        fileName: result.fileName,
+        sha256: result.sha256,
         assetPath: assetPath(body.assetId),
         assetUri: assetUri(body.assetId),
-        createdAt: new Date(String(row.created_at)).toISOString(),
-        updatedAt: new Date(String(row.updated_at)).toISOString()
+        createdAt: new Date(String(result.row.created_at)).toISOString(),
+        updatedAt: new Date(String(result.row.updated_at)).toISOString()
       },
       signature: "Tehkné Solutions"
     };
