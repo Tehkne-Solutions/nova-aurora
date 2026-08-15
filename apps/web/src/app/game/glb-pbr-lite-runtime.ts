@@ -129,8 +129,9 @@ export function parsePbrLiteGlb(buffer: ArrayBuffer): PbrLiteModel {
   let metallicMaterials = 0;
   let emissiveMaterials = 0;
   const drawables = lit.drawables.map((drawable, index): PbrLiteDrawable => {
-    const materialIndex = order[index];
-    const profile = materialProfile(materialIndex === null ? null : materials[materialIndex] ?? null, materialIndex ?? -1);
+    const materialIndex = order[index] ?? null;
+    const materialValue = typeof materialIndex === "number" ? materials[materialIndex] ?? null : null;
+    const profile = materialProfile(materialValue, materialIndex ?? -1);
     if (profile.metallic > 0.001) metallicMaterials += 1;
     if (profile.emissive.some((value) => value > 0.001)) emissiveMaterials += 1;
     return { ...drawable, ...profile };
