@@ -1,11 +1,10 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { slerpQuat, trsMatrix } from "./glb-node-animation-runtime.js";
 import {
-  parseNodeAnimationRuntime,
-  sampleNodeWorldMatrices,
-  slerpQuat,
-  trsMatrix
-} from "./glb-node-animation-runtime.js";
+  parseCertifiedNodeAnimationRuntime,
+  sampleCertifiedNodeWorldMatrices
+} from "./glb-node-animation-sampling.js";
 
 type Path = "translation" | "rotation" | "scale";
 
@@ -98,17 +97,17 @@ function almostEqual(actual: number, expected: number, tolerance = 1e-5): void {
 }
 
 test("LINEAR translation samples halfway and loops", () => {
-  const model = parseNodeAnimationRuntime(buildAnimatedGlb({
+  const model = parseCertifiedNodeAnimationRuntime(buildAnimatedGlb({
     channels: [{ node: 0, path: "translation", times: [0, 2], values: [0, 0, 0, 4, 0, 0] }]
   }));
   assert.equal(model.animationModel, "node-trs-linear-step-v1");
   assert.equal(model.clips[0]?.durationSeconds, 2);
-  assert.deepEqual(translationOf(sampleNodeWorldMatrices(model, 0, 1)[0]!), [2, 0, 0]);
-  assert.deepEqual(translationOf(sampleNodeWorldMatrices(model, 0, 3)[0]!), [2, 0, 0]);
+  assert.deepEqual(translationOf(sampleCertifiedNodeWorldMatrices(model, 0, 1)[0]!), [2, 0, 0]);
+  assert.deepEqual(translationOf(sampleCertifiedNodeWorldMatrices(model, 0, 3)[0]!), [2, 0, 0]);
 });
 
 test("STEP switches exactly at an authored middle keyframe", () => {
-  const model = parseNodeAnimationRuntime(buildAnimatedGlb({
+  const model = parseCertifiedNodeAnimationRuntime(buildAnimatedGlb({
     channels: [{
       node: 0,
       path: "translation",
@@ -117,13 +116,13 @@ test("STEP switches exactly at an authored middle keyframe", () => {
       values: [0, 0, 0, 3, 0, 0, 7, 0, 0]
     }]
   }));
-  assert.deepEqual(translationOf(sampleNodeWorldMatrices(model, 0, 0.999, false)[0]!), [0, 0, 0]);
-  assert.deepEqual(translationOf(sampleNodeWorldMatrices(model, 0, 1, false)[0]!), [3, 0, 0]);
-  assert.deepEqual(translationOf(sampleNodeWorldMatrices(model, 0, 1.5, false)[0]!), [3, 0, 0]);
+  assert.deepEqual(translationOf(sampleCertifiedNodeWorldMatrices(model, 0, 0.999, false)[0]!), [0, 0, 0]);
+  assert.deepEqual(translationOf(sampleCertifiedNodeWorldMatrices(model, 0, 1, false)[0]!), [3, 0, 0]);
+  assert.deepEqual(translationOf(sampleCertifiedNodeWorldMatrices(model, 0, 1.5, false)[0]!), [3, 0, 0]);
 });
 
 test("parent animation propagates through child hierarchy", () => {
-  const model = parseNodeAnimationRuntime(buildAnimatedGlb({
+  const model = parseCertifiedNodeAnimationRuntime(buildAnimatedGlb({
     nodes: [
       { children: [1], translation: [1, 0, 0] },
       { mesh: 0, translation: [0, 2, 0] }
@@ -131,7 +130,7 @@ test("parent animation propagates through child hierarchy", () => {
     sceneRoots: [0],
     channels: [{ node: 0, path: "translation", times: [0, 1], values: [1, 0, 0, 5, 0, 0] }]
   }));
-  const worlds = sampleNodeWorldMatrices(model, 0, 1, false);
+  const worlds = sampleCertifiedNodeWorldMatrices(model, 0, 1, false);
   assert.deepEqual(translationOf(worlds[0]!), [5, 0, 0]);
   assert.deepEqual(translationOf(worlds[1]!), [5, 2, 0]);
   assert.equal(model.primitives.length, 1);
@@ -139,11 +138,11 @@ test("parent animation propagates through child hierarchy", () => {
 });
 
 test("LINEAR scale changes matrix basis without changing translation", () => {
-  const model = parseNodeAnimationRuntime(buildAnimatedGlb({
+  const model = parseCertifiedNodeAnimationRuntime(buildAnimatedGlb({
     nodes: [{ mesh: 0, translation: [2, 3, 4] }],
     channels: [{ node: 0, path: "scale", times: [0, 1], values: [1, 1, 1, 2, 3, 4] }]
   }));
-  const matrix = sampleNodeWorldMatrices(model, 0, 1, false)[0]!;
+  const matrix = sampleCertifiedNodeWorldMatrices(model, 0, 1, false)[0]!;
   almostEqual(matrix[0]!, 2);
   almostEqual(matrix[5]!, 3);
   almostEqual(matrix[10]!, 4);
@@ -160,20 +159,21 @@ test("quaternion slerp follows shortest equivalent-sign path", () => {
 
 test("rotation channel interpolates a 90 degree Y turn at halfway", () => {
   const s = Math.SQRT1_2;
-  const model = parseNodeAnimationRuntime(buildAnimatedGlb({
+  const model = parseCertifiedNodeAnimationRuntime(buildAnimatedGlb({
     channels: [{ node: 0, path: "rotation", times: [0, 2], values: [0, 0, 0, 1, 0, 1, 0, 0] }]
   }));
-  const matrix = sampleNodeWorldMatrices(model, 0, 1, false)[0]!;
+  const matrix = sampleCertifiedNodeWorldMatrices(model, 0, 1, false)[0]!;
   const expected = trsMatrix([0, 0, 0], [0, s, 0, s], [1, 1, 1]);
   for (let index = 0; index < 16; index += 1) almostEqual(matrix[index]!, expected[index]!, 1e-4);
 });
 
-test("parse rejects animation channel targeting a missing node", () => {
-  const buffer = buildAnimatedGlb({
-    channels: [{ node: 4, path: "translation", times: [0, 1], values: [0, 0, 0, 1, 0, 0] }]
-  });
-  const model = parseNodeAnimationRuntime(buffer);
-  assert.throws(() => sampleNodeWorldMatrices(model, 0, 0.5), /Animation target node 4 inexistente/);
+test("certified parse rejects animation channel targeting a missing node", () => {
+  assert.throws(
+    () => parseCertifiedNodeAnimationRuntime(buildAnimatedGlb({
+      channels: [{ node: 4, path: "translation", times: [0, 1], values: [0, 0, 0, 1, 0, 0] }]
+    })),
+    /referencia node 4 inexistente/
+  );
 });
 
 // Tehkné Solutions
