@@ -1,14 +1,16 @@
 "use client";
 
-import { useEffect, useState, type CSSProperties } from "react";
+import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
 import { CharacterSprite } from "./character-sprite";
+import { CitySceneArt } from "./city-scene-art";
 import baseStyles from "./game.module.css";
 import polishStyles from "./polish.module.css";
 import ugcStyles from "./ugc-world.module.css";
+import visualStyles from "./world-visual.module.css";
 import type { District, Location } from "./types";
 import type { Facing, TimePhase, Weather } from "./world-presentation";
 
-const styles = { ...baseStyles, ...polishStyles, ...ugcStyles };
+const styles = { ...baseStyles, ...polishStyles, ...ugcStyles, ...visualStyles };
 const API_URL = (process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000").replace(/\/$/, "");
 
 type WorldPlacement = Readonly<{
@@ -40,14 +42,26 @@ function position(location: Location): Readonly<{ left: string; top: string }> {
   return { left: `${10 + location.mapX * 18}%`, top: `${12 + location.mapY * 22}%` };
 }
 
-function locationGlyph(type: string): string {
-  if (type === "resource") return "⌁";
-  if (type === "market") return "▥";
-  if (type === "production") return "⚙";
-  if (type === "event") return "✦";
-  if (type === "education") return "◇";
-  if (type === "logistics") return "⇄";
-  return "▣";
+function LocationIcon({ type }: Readonly<{ type: string }>): ReactNode {
+  if (type === "resource") {
+    return <svg viewBox="0 0 28 28"><path d="M5 21c4-8 7-12 16-15-1 9-5 14-13 16" /><path d="M8 20c4-4 7-7 12-10" /></svg>;
+  }
+  if (type === "market") {
+    return <svg viewBox="0 0 28 28"><path d="M5 11h18l-2-6H7z" /><path d="M7 11v12h14V11" /><path d="M11 23v-7h6v7" /></svg>;
+  }
+  if (type === "production") {
+    return <svg viewBox="0 0 28 28"><path d="M4 22h20V10l-6 4V9l-6 5V8l-8 5z" /><path d="M9 22v-4M14 22v-4M19 22v-4" /></svg>;
+  }
+  if (type === "event") {
+    return <svg viewBox="0 0 28 28"><path d="M14 3l2.6 7.4L24 13l-7.4 2.6L14 23l-2.6-7.4L4 13l7.4-2.6z" /></svg>;
+  }
+  if (type === "education") {
+    return <svg viewBox="0 0 28 28"><path d="M3 10l11-5 11 5-11 5z" /><path d="M7 12v6c5 3 9 3 14 0v-6" /><path d="M25 10v8" /></svg>;
+  }
+  if (type === "logistics") {
+    return <svg viewBox="0 0 28 28"><path d="M3 9h15v11H3z" /><path d="M18 13h4l3 3v4h-7z" /><circle cx="8" cy="21" r="2" /><circle cx="21" cy="21" r="2" /></svg>;
+  }
+  return <svg viewBox="0 0 28 28"><path d="M5 23V9l9-5 9 5v14z" /><path d="M10 23v-7h8v7M9 11h2M17 11h2" /></svg>;
 }
 
 function placementAssetUrl(placement: WorldPlacement): string | null {
@@ -77,24 +91,25 @@ export function CityWorld({ districts, currentLocationCode, visualLocationCode, 
 
   return (
     <div aria-label="Mapa interativo de Nova Aurora" className={`${styles.cityStage} ${styles[`time_${timePhase}`]} ${styles[`weather_${weather}`]} ${reducedMotion ? styles.reducedMotion : ""}`} data-time={timePhase} data-weather={weather}>
-      <div className={styles.skyGlow} aria-hidden="true" />
-      <div className={styles.cityHorizon} aria-hidden="true"><span /><span /><span /><span /><span /><span /></div>
+      <CitySceneArt timePhase={timePhase} />
       <div className={styles.weatherLayer} aria-hidden="true">
         {Array.from({ length: weather === "rain" ? 28 : 10 }, (_, index) => <i key={index} style={{ "--particle": index } as CSSProperties} />)}
       </div>
-      <div className={`${styles.zone} ${styles.zoneNorth}`}><span>VALE VERDE</span></div>
-      <div className={`${styles.zone} ${styles.zoneWest}`}><span>CENTRO CÍVICO</span></div>
-      <div className={`${styles.zone} ${styles.zoneEast}`}><span>CINTURÃO INDUSTRIAL</span></div>
-      <div className={`${styles.zone} ${styles.zoneSouth}`}><span>DISTRITO CRIATIVO</span></div>
-      <div className={styles.roads} aria-hidden="true" />
-      <div className={styles.roadLights} aria-hidden="true" />
-      <div className={styles.mobilityHub}><span>NA</span><small>Nó Central</small></div>
 
       {districts.flatMap((district) => district.locations.map((location) => (
-        <button aria-current={location.code === currentLocationCode ? "location" : undefined} className={`${styles.mapLocation} ${styles[`location_${district.theme}`] ?? ""} ${location.code === currentLocationCode ? styles.currentLocation : ""}`} disabled={busy} key={location.code} onClick={() => onMove(location.code)} style={position(location)} title={location.description}>
-          <span className={styles.buildingTop} aria-hidden="true" />
-          <span className={styles.locationIcon} aria-hidden="true">{locationGlyph(location.locationType)}</span>
-          <strong>{location.name}</strong><small>{district.name}</small>
+        <button
+          aria-current={location.code === currentLocationCode ? "location" : undefined}
+          aria-label={`${location.name}, ${district.name}. ${location.description}`}
+          className={`${styles.mapLocation} ${styles[`location_${district.theme}`] ?? ""} ${location.code === currentLocationCode ? styles.currentLocation : ""}`}
+          disabled={busy}
+          key={location.code}
+          onClick={() => onMove(location.code)}
+          style={position(location)}
+          title={location.description}
+        >
+          <span className={styles.locationIcon} aria-hidden="true"><LocationIcon type={location.locationType} /></span>
+          <strong>{location.name}</strong>
+          <small>{district.name}</small>
         </button>
       )))}
 
@@ -131,3 +146,5 @@ export function CityWorld({ districts, currentLocationCode, visualLocationCode, 
     </div>
   );
 }
+
+// Tehkné Solutions
