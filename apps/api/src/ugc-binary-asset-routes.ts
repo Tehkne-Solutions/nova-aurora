@@ -6,6 +6,10 @@ import { z } from "zod";
 import { db } from "@nova-aurora/database";
 import { requireActor } from "./auth-context.js";
 import {
+  validateGlbEmbeddedTextures,
+  type GlbTextureSecurityReport
+} from "./glb-embedded-texture-security.js";
+import {
   GlbSecurityError,
   validateGlbForRuntime,
   type GlbSecurityReport
@@ -227,20 +231,22 @@ export async function registerUgcBinaryAssetRoutes(app: FastifyInstance): Promis
         }
 
         let glbSecurity: GlbSecurityReport | null = null;
+        let glbTextureSecurity: GlbTextureSecurityReport | null = null;
         if (String(session.content_type) === "model/gltf-binary") {
           try {
             glbSecurity = validateGlbForRuntime(bytes);
+            glbTextureSecurity = validateGlbEmbeddedTextures(bytes);
           } catch (error) {
             const code = error instanceof GlbSecurityError ? error.code : "invalid-structure";
             await tx`
               UPDATE ugc_binary_asset_upload_sessions
-              SET status='rejected',rejection_reason=${`glb-structural:${code}`},updated_at=now()
+              SET status='rejected',rejection_reason=${`glb-security:${code}`},updated_at=now()
               WHERE id=${uploadId}::uuid
             `;
             return {
               kind: "rejected" as const,
               session,
-              message: `GLB rejeitado pela validação estrutural segura (${code}).`
+              message: `GLB rejeitado pela validação segura (${code}).`
             };
           }
         }
@@ -250,7 +256,7 @@ export async function registerUgcBinaryAssetRoutes(app: FastifyInstance): Promis
           SET status='scanning',updated_at=now()
           WHERE id=${uploadId}::uuid
         `;
-        return { kind: "claimed" as const, session, receivedSha, glbSecurity };
+        return { kind: "claimed" as const, session, receivedSha, glbSecurity, glbTextureSecurity };
       });
 
       if (claim.kind === "expired") throw app.httpErrors.gone("Sessão binária expirada.");
@@ -329,7 +335,8 @@ export async function registerUgcBinaryAssetRoutes(app: FastifyInstance): Promis
             contentType,
             malwareScan: "clean",
             alreadyClean: false,
-            ...(claim.glbSecurity ? { glbSecurity: claim.glbSecurity } : {})
+            ...(claim.glbSecurity ? { glbSecurity: claim.glbSecurity } : {}),
+            ...(claim.glbTextureSecurity ? { glbTextureSecurity: claim.glbTextureSecurity } : {})
           },
           signature: "Tehkné Solutions"
         };
