@@ -1,3 +1,3 @@
-export { GlbPlacement } from "./glb-dual-texture-placement";
+export { GlbPlacement } from "./glb-ambient-emissive-placement";
 
 // Tehkné Solutions
