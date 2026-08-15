@@ -111,6 +111,7 @@ export async function registerUgcWorldPlacementRoutes(app: FastifyInstance): Pro
     return {
       placements: rows.map((row) => serializePlacement(row)),
       filter: { locationCode: query.locationCode ?? null, limit: query.limit },
+      renderMode: "image-billboard-v1" as const,
       renderModes: ["image-billboard-v1", "glb-model-v1"] as const,
       signature: "Tehkné Solutions"
     };
