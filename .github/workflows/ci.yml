@@ -59,8 +59,10 @@ jobs:
         shell: bash
         run: |
           set -Eeuo pipefail
+          mkdir -p "$RUNNER_TEMP/nova-aurora-storage-data"
           docker run -d --name nova-aurora-storage-ci \
             -p 8333:8333 \
+            -v "$RUNNER_TEMP/nova-aurora-storage-data:/data" \
             -e AWS_ACCESS_KEY_ID="$OBJECT_STORAGE_ACCESS_KEY" \
             -e AWS_SECRET_ACCESS_KEY="$OBJECT_STORAGE_SECRET_KEY" \
             -e S3_BUCKET="$OBJECT_STORAGE_BUCKET" \
@@ -143,6 +145,76 @@ jobs:
           VERIFIED_UPLOAD_QA_REPORT: verified-upload-report.json
         run: node infra/qa/verified-upload-smoke.mjs
 
+      - name: Object storage backup and restore gate
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          data_dir="$RUNNER_TEMP/nova-aurora-storage-data"
+          backup_dir="$RUNNER_TEMP/nova-aurora-object-storage-backups"
+          mkdir -p "$backup_dir"
+          upload_id="$(node -p "JSON.parse(require('node:fs').readFileSync('verified-upload-report.json','utf8')).uploadId")"
+          expected_sha="$(node -p "JSON.parse(require('node:fs').readFileSync('verified-upload-report.json','utf8')).sha256")"
+          test -n "$upload_id"
+          test -n "$expected_sha"
+
+          start_storage() {
+            docker run -d --name nova-aurora-storage-ci \
+              -p 8333:8333 \
+              -v "$data_dir:/data" \
+              -e AWS_ACCESS_KEY_ID="$OBJECT_STORAGE_ACCESS_KEY" \
+              -e AWS_SECRET_ACCESS_KEY="$OBJECT_STORAGE_SECRET_KEY" \
+              -e S3_BUCKET="$OBJECT_STORAGE_BUCKET" \
+              chrislusf/seaweedfs:4.29 mini -dir=/data
+            for attempt in $(seq 1 60); do
+              if curl --silent --output /dev/null http://127.0.0.1:8333/; then
+                return 0
+              fi
+              sleep 1
+            done
+            docker logs nova-aurora-storage-ci || true
+            return 1
+          }
+
+          docker rm -f nova-aurora-storage-ci
+          docker run --rm \
+            -e CONFIRM_OBJECT_STORAGE_OFFLINE=OBJECT_STORAGE_IS_STOPPED \
+            -e OBJECT_STORAGE_DATA_DIR=/data \
+            -e OBJECT_STORAGE_BACKUP_DIR=/backups \
+            -v "$PWD/infra/backup:/opt/nova-aurora:ro" \
+            -v "$data_dir:/data:ro" \
+            -v "$backup_dir:/backups" \
+            postgres:17-alpine /bin/sh /opt/nova-aurora/object-storage-backup.sh
+          backup_file="$(find "$backup_dir" -name 'nova-aurora-object-storage-*.tar.gz' -type f | head -n 1)"
+          test -n "$backup_file"
+
+          docker run --rm --entrypoint /bin/sh \
+            -v "$data_dir:/data" \
+            chrislusf/seaweedfs:4.29 \
+            -ec 'find /data -mindepth 1 -maxdepth 1 -exec rm -rf {} +'
+          start_storage
+          empty_status="$(curl --silent --output /tmp/object-storage-empty-body --write-out '%{http_code}' "http://127.0.0.1:4000/v1/ugc/assets/manifests/$upload_id" || true)"
+          if [ "$empty_status" -lt 400 ]; then
+            echo "Storage destruído ainda serviu o manifesto ($empty_status); gate não provou perda/restore." >&2
+            exit 1
+          fi
+
+          docker rm -f nova-aurora-storage-ci
+          docker run --rm \
+            -e CONFIRM_OBJECT_STORAGE_OFFLINE=OBJECT_STORAGE_IS_STOPPED \
+            -e CONFIRM_OBJECT_STORAGE_RESTORE=RESTORE_NOVA_AURORA_OBJECT_STORAGE \
+            -e OBJECT_STORAGE_DATA_DIR=/data \
+            -v "$PWD/infra/backup:/opt/nova-aurora:ro" \
+            -v "$data_dir:/data" \
+            -v "$backup_dir:/backups:ro" \
+            postgres:17-alpine /bin/sh /opt/nova-aurora/object-storage-restore.sh "/backups/$(basename "$backup_file")"
+          start_storage
+
+          curl --fail --silent "http://127.0.0.1:4000/v1/ugc/assets/manifests/$upload_id" > restored-manifest.json
+          restored_sha="$(sha256sum restored-manifest.json | cut -d' ' -f1)"
+          test "$restored_sha" = "$expected_sha"
+          printf '{"status":"passed","uploadId":"%s","expectedSha256":"%s","restoredSha256":"%s","lossProved":true,"offlineSnapshot":true,"signature":"Tehkné Solutions"}\n' \
+            "$upload_id" "$expected_sha" "$restored_sha" > object-storage-recovery-report.json
+
       - name: Browser E2E and accessibility gate
         env:
           API_URL: http://127.0.0.1:4000
@@ -167,6 +239,8 @@ jobs:
           name: release-qa-evidence
           path: |
             verified-upload-report.json
+            object-storage-recovery-report.json
+            restored-manifest.json
             release-browser-report.json
             release-load-report.json
             api-smoke.log
@@ -190,6 +264,8 @@ jobs:
           sh -n infra/backup/backup.sh
           sh -n infra/backup/restore.sh
           sh -n infra/backup/verify.sh
+          sh -n infra/backup/object-storage-backup.sh
+          sh -n infra/backup/object-storage-restore.sh
           node -e "JSON.parse(require('node:fs').readFileSync('infra/grafana/dashboards/nova-aurora-operations.json','utf8'))"
 
       - name: Validate production Compose
@@ -272,6 +348,7 @@ jobs:
             api-smoke.log
             web-smoke.log
             object-storage-ci.log
+            object-storage-recovery-report.json
 
       - name: Stop object storage
         if: always()
