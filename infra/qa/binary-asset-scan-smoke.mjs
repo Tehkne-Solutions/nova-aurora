@@ -111,6 +111,30 @@ if (invalidPublic.status !== 404) {
   throw new Error(`Asset rejeitado não pode ser público; esperado 404, recebeu ${invalidPublic.status}.`);
 }
 
+const library = await requireJson("/v1/ugc/assets/library/me?limit=100", { headers: authHeaders });
+if (!Array.isArray(library?.assets)) throw new Error("Biblioteca do criador não retornou uma lista de assets.");
+const cleanLibraryAsset = library.assets.find((entry) => entry.id === upload.id);
+if (!cleanLibraryAsset || cleanLibraryAsset.status !== "clean") {
+  throw new Error("Asset limpo não apareceu na biblioteca autenticada do próprio criador.");
+}
+if (cleanLibraryAsset.verifiedSha256 !== cleanSha || cleanLibraryAsset.assetPath !== `/v1/ugc/assets/files/${upload.id}`) {
+  throw new Error("Biblioteca não preservou SHA-256 verificado + caminho público canônico do asset limpo.");
+}
+if (!String(cleanLibraryAsset.assetUri ?? "").startsWith("https://")) {
+  throw new Error("Biblioteca não expôs URI HTTPS para o asset limpo.");
+}
+const rejectedLibraryAsset = library.assets.find((entry) => entry.id === invalidUpload.id);
+if (!rejectedLibraryAsset || rejectedLibraryAsset.status !== "rejected") {
+  throw new Error("Asset rejeitado não apareceu com status seguro na biblioteca do criador.");
+}
+if (rejectedLibraryAsset.assetPath !== null || rejectedLibraryAsset.assetUri !== null) {
+  throw new Error("Asset rejeitado recebeu referência pública indevida na biblioteca.");
+}
+const libraryJson = JSON.stringify(library);
+for (const forbidden of ["quarantine_object_key", "clean_object_key", "scanner_signature"]) {
+  if (libraryJson.includes(forbidden)) throw new Error(`Biblioteca expôs metadado privado proibido: ${forbidden}.`);
+}
+
 const report = {
   status: "passed",
   cleanUploadId: upload.id,
@@ -122,6 +146,10 @@ const report = {
   immutableCache: true,
   invalidMagicRejected: true,
   rejectedAssetNotPublic: true,
+  creatorAssetLibraryVisible: true,
+  cleanAssetLibraryCanonical: true,
+  rejectedAssetLibraryFailClosed: true,
+  privateStorageMetadataHidden: true,
   signature: "Tehkné Solutions"
 };
 await writeFile(reportFile, JSON.stringify(report, null, 2));
