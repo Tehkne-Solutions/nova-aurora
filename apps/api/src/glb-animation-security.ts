@@ -71,7 +71,7 @@ function parseGlb(bytes: Buffer): { document: JsonObject; bin: Buffer } {
         fail("animation-json", "JSON GLB inválido.");
       }
     } else if (type === GLB_BIN_CHUNK && bin.length === 0) {
-      bin = chunk;
+      bin = Buffer.from(chunk);
     }
     offset += length;
   }
