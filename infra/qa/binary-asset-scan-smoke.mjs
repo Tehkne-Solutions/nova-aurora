@@ -203,6 +203,70 @@ if (!boundBlueprint || String(boundBlueprint.verified_upload_id ?? "") !== manif
   throw new Error("Inventário não preservou asset bundle → manifesto → blueprint verificado.");
 }
 
+const worldLocations = await requireJson("/v1/ugc/world/locations");
+const targetLocation = worldLocations?.locations?.find((entry) => entry.code === "event-plaza") ?? worldLocations?.locations?.[0];
+if (!targetLocation?.code) throw new Error("Catálogo de locais do mundo não retornou um destino para QA.");
+
+const placementResponse = await requireJson("/v1/ugc/world/placements", {
+  method: "POST",
+  headers: { ...authHeaders, "content-type": "application/json" },
+  body: JSON.stringify({
+    assetId: upload.id,
+    locationCode: targetLocation.code,
+    label: `Objeto QA ${nonce.slice(0, 8)}`,
+    offsetX: 18,
+    offsetY: -92,
+    scalePercent: 110
+  })
+});
+const placementId = String(placementResponse?.placement?.id ?? "");
+if (!placementId || placementResponse?.placement?.assetId !== upload.id) {
+  throw new Error("Placement do asset clean não retornou identidade canônica.");
+}
+if (placementResponse?.placement?.assetPath !== `/v1/ugc/assets/files/${upload.id}`) {
+  throw new Error("Placement clean não preservou o caminho público canônico do asset.");
+}
+
+const publicPlacements = await requireJson(`/v1/ugc/world/placements?locationCode=${encodeURIComponent(targetLocation.code)}&limit=200`);
+const visiblePlacement = publicPlacements?.placements?.find((entry) => entry.id === placementId);
+if (!visiblePlacement || visiblePlacement.assetId !== upload.id || visiblePlacement.sha256 !== cleanSha) {
+  throw new Error("Runtime público não expôs exatamente o placement clean criado.");
+}
+if (publicPlacements?.renderMode !== "image-billboard-v1") {
+  throw new Error("Runtime UGC não declarou o renderer image-billboard-v1 esperado.");
+}
+
+const rejectedPlacementAttempt = await requestJson("/v1/ugc/world/placements", {
+  method: "POST",
+  headers: { ...authHeaders, "content-type": "application/json" },
+  body: JSON.stringify({
+    assetId: invalidUpload.id,
+    locationCode: targetLocation.code,
+    label: `Rejeitado QA ${nonce.slice(0, 8)}`,
+    offsetX: 0,
+    offsetY: -70,
+    scalePercent: 100
+  })
+});
+if (rejectedPlacementAttempt.response.status !== 409) {
+  throw new Error(`Asset rejeitado deveria ser bloqueado no placement com 409, recebeu ${rejectedPlacementAttempt.response.status}.`);
+}
+
+const ownPlacements = await requireJson("/v1/ugc/world/placements/me", { headers: authHeaders });
+if (!ownPlacements?.placements?.some((entry) => entry.id === placementId)) {
+  throw new Error("Placement clean não apareceu no inventário autenticado do criador.");
+}
+
+const removal = await requireJson(`/v1/ugc/world/placements/${placementId}`, {
+  method: "DELETE",
+  headers: authHeaders
+});
+if (removal?.removed !== true) throw new Error("Remoção do placement não confirmou transição para removed.");
+const afterRemoval = await requireJson(`/v1/ugc/world/placements?locationCode=${encodeURIComponent(targetLocation.code)}&limit=200`);
+if (afterRemoval?.placements?.some((entry) => entry.id === placementId)) {
+  throw new Error("Placement removido continuou exposto ao runtime público.");
+}
+
 const report = {
   status: "passed",
   cleanUploadId: upload.id,
@@ -223,6 +287,12 @@ const report = {
   composedBlueprintId: blueprintId,
   cleanAssetManifestBlueprintChain: true,
   atomicBundleBlueprintBinding: true,
+  worldPlacementId: placementId,
+  worldPlacementLocationCode: targetLocation.code,
+  cleanImageWorldPlacementVisible: true,
+  rejectedImageWorldPlacementBlocked: true,
+  removedPlacementNotPublic: true,
+  worldRenderMode: "image-billboard-v1",
   signature: "Tehkné Solutions"
 };
 await writeFile(reportFile, JSON.stringify(report, null, 2));
