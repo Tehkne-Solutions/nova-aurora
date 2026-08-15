@@ -2,6 +2,7 @@ import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { db } from "@nova-aurora/database";
 import { requireActor } from "./auth-context.js";
+import { registerUgcWorldPlacementRoutes } from "./ugc-world-placement-routes.js";
 
 const economySql = db();
 
@@ -21,6 +22,8 @@ function assetUri(uploadId: string): string | null {
 }
 
 export async function registerUgcAssetLibraryRoutes(app: FastifyInstance): Promise<void> {
+  await registerUgcWorldPlacementRoutes(app);
+
   app.get("/v1/ugc/assets/library/me", async (request) => {
     const actor = await requireActor(app, request);
     const query = assetListQuerySchema.parse(request.query);

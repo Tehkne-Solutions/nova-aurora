@@ -5,6 +5,7 @@ import { BinaryAssetLibrary } from "./asset-library";
 import { AssetManifestComposer } from "./asset-manifest-composer";
 import { UgcCreatorStudio } from "./ugc-studio";
 import { UgcManifestIntegrityGate } from "./ugc-manifest-integrity";
+import { WorldPlacementStudio } from "./world-placement-studio";
 import styles from "../../social.module.css";
 
 export default function UgcCreatorStudioPage() {
@@ -16,11 +17,12 @@ export default function UgcCreatorStudioPage() {
             <p className={styles.eyebrow}>Nova Aurora · Objetos criados por usuários</p>
             <h1>UGC Creator Studio</h1>
             <p className={styles.headerLead}>
-              Envie assets binários verificados, componha bundles clean-only, versione objetos virtuais e configure edições comerciais com proveniência e royalties persistentes.
+              Envie assets binários verificados, componha bundles clean-only, versione objetos virtuais, instale imagens no mundo e configure edições comerciais com proveniência e royalties persistentes.
             </p>
           </div>
           <div className={styles.headerActions}>
             <Link className={styles.link} href="/community/social/studio/ugc/upload">Verificar manifesto</Link>
+            <Link className={styles.link} href="/game">Ver mundo</Link>
             <Link className={styles.link} href="/community/social/studio">Creator Studio</Link>
             <Link className={styles.link} href="/community/social">Hub Social</Link>
           </div>
@@ -32,6 +34,7 @@ export default function UgcCreatorStudioPage() {
 
         <BinaryAssetLibrary />
         <AssetManifestComposer />
+        <WorldPlacementStudio />
 
         <footer className={styles.footer}>Tehkné Solutions</footer>
       </div>
