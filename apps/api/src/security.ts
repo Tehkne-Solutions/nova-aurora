@@ -38,6 +38,12 @@ function isPublicImmutableUgcAsset(method: string, path: string): boolean {
     && (VERIFIED_MANIFEST_PATH.test(path) || CLEAN_BINARY_ASSET_PATH.test(path));
 }
 
+function isPublicUgcWorldRead(method: string, path: string): boolean {
+  if (method !== "GET" && method !== "HEAD") return false;
+  return path === "/v1/ugc/world/locations"
+    || path === "/v1/ugc/world/placements";
+}
+
 export async function registerSecurity(app: FastifyInstance): Promise<void> {
   app.addHook("onRequest", async (request) => {
     const path = request.url.split("?", 1)[0] ?? request.url;
@@ -64,6 +70,7 @@ export async function registerSecurity(app: FastifyInstance): Promise<void> {
     if (
       isPublicIdentityPath(path)
       || isPublicImmutableUgcAsset(request.method, path)
+      || isPublicUgcWorldRead(request.method, path)
       || path.startsWith("/v1/auth/")
       || path.startsWith("/v1/live/")
     ) {
