@@ -1,4 +1,9 @@
 import type { AnimationClipSelector } from "./glb-animation-playback";
+import {
+  sampleResolvedAnimationPlayback,
+  type AnimationPlaybackFrame
+} from "./glb-animation-playback-runtime";
+import type { NodeAnimationRuntimeModel } from "./glb-node-animation-runtime";
 
 export type ObjectAnimationState =
   | "idle"
@@ -33,6 +38,15 @@ export function normalizeObjectAnimationState(value: unknown): ObjectAnimationSt
     return normalized;
   }
   return "idle";
+}
+
+export function sampleObjectAnimationState(
+  model: NodeAnimationRuntimeModel,
+  state: ObjectAnimationState,
+  elapsedSeconds: number
+): AnimationPlaybackFrame {
+  const policy = animationPlaybackForObjectState(state);
+  return sampleResolvedAnimationPlayback(model, policy.selector, elapsedSeconds, policy.loop);
 }
 
 // Tehkné Solutions
