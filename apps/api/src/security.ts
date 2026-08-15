@@ -19,6 +19,7 @@ type RequestIdentity = Readonly<{
 
 const requestIdentities = new WeakMap<FastifyRequest, RequestIdentity>();
 const VERIFIED_MANIFEST_PATH = /^\/v1\/ugc\/assets\/manifests\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const CLEAN_BINARY_ASSET_PATH = /^\/v1\/ugc\/assets\/files\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function isPublicIdentityPath(path: string): boolean {
   return path === "/v1/auth/login"
@@ -32,8 +33,9 @@ function isPublicIdentityPath(path: string): boolean {
     || path === "/v1/status/public";
 }
 
-function isPublicVerifiedManifest(method: string, path: string): boolean {
-  return (method === "GET" || method === "HEAD") && VERIFIED_MANIFEST_PATH.test(path);
+function isPublicImmutableUgcAsset(method: string, path: string): boolean {
+  return (method === "GET" || method === "HEAD")
+    && (VERIFIED_MANIFEST_PATH.test(path) || CLEAN_BINARY_ASSET_PATH.test(path));
 }
 
 export async function registerSecurity(app: FastifyInstance): Promise<void> {
@@ -61,7 +63,7 @@ export async function registerSecurity(app: FastifyInstance): Promise<void> {
 
     if (
       isPublicIdentityPath(path)
-      || isPublicVerifiedManifest(request.method, path)
+      || isPublicImmutableUgcAsset(request.method, path)
       || path.startsWith("/v1/auth/")
       || path.startsWith("/v1/live/")
     ) {
@@ -121,7 +123,7 @@ export async function registerSecurity(app: FastifyInstance): Promise<void> {
     reply.header("permissions-policy", "camera=(), microphone=(), geolocation=()");
     reply.header(
       "cache-control",
-      isPublicVerifiedManifest(request.method, path)
+      isPublicImmutableUgcAsset(request.method, path)
         ? "public,max-age=31536000,immutable"
         : "no-store"
     );
