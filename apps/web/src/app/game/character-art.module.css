@@ -1,0 +1,18 @@
+.characterSprite{width:92px;overflow:visible;filter:drop-shadow(0 10px 8px #02071188)}
+.characterCompact{width:72px}
+.characterPortrait{width:100%;height:100%;filter:none}
+.characterShadow{fill:#02060c72}
+.characterBody,.characterHead,.characterLegs,.characterArms,.characterAccessories{transform-box:fill-box;transform-origin:center}
+.characterMoving .characterBody,.characterMoving .characterHead,.characterMoving .characterAccessories{animation:characterBob .38s ease-in-out infinite alternate}
+.characterMoving .characterLegLeft{animation:stepLeft .38s ease-in-out infinite alternate}
+.characterMoving .characterLegRight{animation:stepRight .38s ease-in-out infinite alternate}
+.characterMoving .characterArmLeft{animation:armLeft .38s ease-in-out infinite alternate}
+.characterMoving .characterArmRight{animation:armRight .38s ease-in-out infinite alternate}
+.characterBreath{animation:characterBreath 2.8s ease-in-out infinite alternate;transform-box:fill-box;transform-origin:center bottom}
+@keyframes characterBob{to{transform:translateY(-3px)}}
+@keyframes characterBreath{to{transform:scaleY(1.018)}}
+@keyframes stepLeft{from{transform:rotate(4deg)}to{transform:rotate(-6deg)}}
+@keyframes stepRight{from{transform:rotate(-5deg)}to{transform:rotate(6deg)}}
+@keyframes armLeft{from{transform:rotate(-3deg)}to{transform:rotate(5deg)}}
+@keyframes armRight{from{transform:rotate(4deg)}to{transform:rotate(-5deg)}}
+@media(prefers-reduced-motion:reduce){.characterSprite *{animation:none!important}}
