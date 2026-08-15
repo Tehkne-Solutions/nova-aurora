@@ -26,7 +26,12 @@ services:
       S3_BUCKET: nova-aurora-ugc
     ports: ["8333:8333"]
     volumes: ["object_storage_data:/data"]
+  clamav:
+    image: clamav/clamav:1.5.3
+    ports: ["3310:3310"]
+    volumes: ["clamav_signatures:/var/lib/clamav"]
 volumes:
   postgres_data:
   redis_data:
   object_storage_data:
+  clamav_signatures:
