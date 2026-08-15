@@ -1,0 +1,15 @@
+.overlay{position:fixed;z-index:55;inset:0;display:grid;align-items:end;padding:clamp(14px,4vw,46px);background:#020712b8;backdrop-filter:blur(8px)}
+.card{width:min(1020px,100%);margin:0 auto;display:grid;grid-template-columns:minmax(190px,270px) 1fr;gap:0;overflow:hidden;border:1px solid #ffffff20;border-radius:26px;background:#0b1724;box-shadow:0 30px 120px #000c}
+.portrait{position:relative;min-height:300px;overflow:hidden;display:grid;align-items:end;justify-items:center;background:#172b35}
+.portrait::before{content:"";position:absolute;inset:0;background:linear-gradient(165deg,#31505b 0 42%,#172732 42% 100%);opacity:.75}
+.portrait::after{content:"";position:absolute;left:-15%;right:-15%;bottom:-36%;height:60%;border-radius:50%;background:#07111c;opacity:.72}
+.portraitArt{position:relative;z-index:2;width:76%;height:92%;display:grid;align-items:end}
+.identity{position:absolute;z-index:3;left:14px;right:14px;bottom:13px;padding:9px 11px;border:1px solid #ffffff1c;border-radius:12px;background:#07121bdd}
+.identity strong,.identity span{display:block}.identity strong{font-size:.88rem}.identity span{margin-top:2px;color:#9eb3bf;font-size:.68rem}
+.content{display:flex;min-height:300px;flex-direction:column;padding:26px 30px}
+.role{margin:0;color:#78c7aa;font-size:.7rem;font-weight:900;letter-spacing:.17em;text-transform:uppercase}
+.content h2{margin:7px 0 12px;font-size:clamp(1.55rem,3vw,2.25rem)}
+.line{flex:1;margin:0;color:#e1e9ef;font-size:clamp(1.02rem,2vw,1.22rem);line-height:1.7}
+.progress{margin:18px 0 12px;color:#7f95a5;font-size:.68rem;font-weight:800;letter-spacing:.1em}
+.actions{display:flex;justify-content:flex-end;gap:10px}.actions button{border:0;border-radius:13px;background:#78c7aa;color:#052018;font-weight:900;padding:12px 17px;cursor:pointer}.actions .secondary{color:#d7e2ee;border:1px solid #ffffff1c;background:#ffffff0d}
+@media(max-width:720px){.overlay{align-items:center}.card{grid-template-columns:1fr}.portrait{min-height:150px;grid-template-columns:130px 1fr;align-items:end;justify-items:start}.portraitArt{width:130px;height:150px}.identity{left:135px;right:12px;bottom:18px}.content{min-height:270px;padding:20px}.actions{justify-content:stretch}.actions button{flex:1}}
