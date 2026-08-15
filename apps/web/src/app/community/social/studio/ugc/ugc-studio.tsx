@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { VerifiedManifestUpload, type VerifiedManifest } from "./upload/verified-upload";
 import styles from "../../social.module.css";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
@@ -8,6 +9,7 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
 type BlueprintCategory = "decor" | "furniture" | "wearable" | "art" | "collectible" | "architecture" | "vehicle" | "component";
 type BlueprintStatus = "draft" | "published" | "retired" | "rejected";
 type ManifestRegistryStatus = "declared" | "revoked" | null;
+type VerifiedUploadStatus = "pending" | "verified" | "rejected" | "expired" | null;
 type Scarcity = "open" | "limited" | "unique";
 type TokenizationStatus = "disabled" | "eligible" | "anchored";
 
@@ -26,6 +28,9 @@ type Blueprint = Readonly<{
   manifest_registry_status: ManifestRegistryStatus;
   manifest_registry_uri: string | null;
   manifest_registry_sha256: string | null;
+  verified_upload_id: string | null;
+  verified_upload_status: VerifiedUploadStatus;
+  verified_at: string | null;
   created_at: string;
   updated_at: string;
 }>;
@@ -79,6 +84,7 @@ type BlueprintDraft = Readonly<{
   contentHash: string;
   royaltyBps: string;
   tokenizationStatus: "disabled" | "eligible";
+  verifiedUploadId: string;
 }>;
 
 type EditionDraft = Readonly<{
@@ -98,7 +104,8 @@ const blankBlueprint = (): BlueprintDraft => ({
   assetManifestUri: "",
   contentHash: "",
   royaltyBps: "500",
-  tokenizationStatus: "disabled"
+  tokenizationStatus: "disabled",
+  verifiedUploadId: ""
 });
 
 const blankEdition = (blueprintId = ""): EditionDraft => ({
@@ -158,6 +165,7 @@ function blueprintStatus(status: BlueprintStatus): string {
 }
 
 function integrityLabel(blueprint: Blueprint): string {
+  if (blueprint.verified_upload_id && blueprint.verified_upload_status === "verified") return "Bytes verificados pela plataforma";
   if (blueprint.asset_manifest_registry_id && blueprint.manifest_registry_status === "declared") return "Integridade declarada";
   if (blueprint.manifest_registry_status === "revoked") return "Declaração revogada";
   return "Legado sem declaração";
@@ -232,8 +240,20 @@ export function UgcCreatorStudio() {
       assetManifestUri: blueprintDraft.assetManifestUri.trim(),
       contentHash: blueprintDraft.contentHash.trim().toLowerCase(),
       royaltyBps: Number(blueprintDraft.royaltyBps),
-      tokenizationStatus: blueprintDraft.tokenizationStatus
+      tokenizationStatus: blueprintDraft.tokenizationStatus,
+      ...(blueprintDraft.verifiedUploadId ? { verifiedUploadId: blueprintDraft.verifiedUploadId } : {})
     };
+  }
+
+  function applyVerifiedManifest(manifest: VerifiedManifest) {
+    setBlueprintDraft((current) => ({
+      ...current,
+      assetManifestUri: manifest.assetManifestUri,
+      contentHash: manifest.sha256,
+      verifiedUploadId: manifest.uploadId
+    }));
+    setNotice("Manifesto verificado aplicado ao rascunho. O vínculo será confirmado atomicamente ao salvar.");
+    setError(null);
   }
 
   async function createBlueprint() {
@@ -244,7 +264,9 @@ export function UgcCreatorStudio() {
       });
       setBlueprintDraft(blankBlueprint());
       await loadStudio();
-    }, "Blueprint salvo como rascunho com declaração HTTPS + SHA-256 registrada.");
+    }, blueprintDraft.verifiedUploadId
+      ? "Blueprint salvo com bytes verificados pela plataforma e vínculo atômico ao registry."
+      : "Blueprint salvo como rascunho com declaração HTTPS + SHA-256 registrada.");
   }
 
   async function saveBlueprintEdit() {
@@ -257,7 +279,9 @@ export function UgcCreatorStudio() {
       setEditingBlueprintId(null);
       setBlueprintDraft(blankBlueprint());
       await loadStudio();
-    }, "Blueprint atualizado e declaração de integridade reconciliada.");
+    }, blueprintDraft.verifiedUploadId
+      ? "Blueprint atualizado com vínculo ao upload verificado confirmado."
+      : "Blueprint atualizado e declaração de integridade reconciliada.");
   }
 
   function beginBlueprintEdit(blueprint: Blueprint) {
@@ -269,7 +293,8 @@ export function UgcCreatorStudio() {
       assetManifestUri: blueprint.asset_manifest_uri,
       contentHash: blueprint.content_hash,
       royaltyBps: String(blueprint.royalty_bps),
-      tokenizationStatus: blueprint.tokenization_status === "eligible" ? "eligible" : "disabled"
+      tokenizationStatus: blueprint.tokenization_status === "eligible" ? "eligible" : "disabled",
+      verifiedUploadId: blueprint.verified_upload_status === "verified" ? blueprint.verified_upload_id ?? "" : ""
     });
   }
 
@@ -333,7 +358,7 @@ export function UgcCreatorStudio() {
       <div className={styles.sectionHeader}>
         <div>
           <h3 id="ugc-studio-inner-title">UGC Creator Studio</h3>
-          <p>Modele blueprints versionados, declare o manifesto por HTTPS + SHA-256 e abra edições comerciais com proveniência persistente.</p>
+          <p>Modele blueprints versionados, use upload verificado quando possível ou declare manualmente HTTPS + SHA-256, e abra edições comerciais com proveniência persistente.</p>
         </div>
         <button className={styles.buttonQuiet} type="button" disabled={busy} onClick={() => void loadStudio()}>Atualizar</button>
       </div>
@@ -356,6 +381,13 @@ export function UgcCreatorStudio() {
             <label htmlFor="ugc-blueprint-version">Versão</label>
             <input id="ugc-blueprint-version" className={styles.input} type="number" min="1" step="1" value={blueprintDraft.version} onChange={(event) => setBlueprintDraft((current) => ({ ...current, version: event.target.value }))} />
 
+            <VerifiedManifestUpload embedded onVerified={applyVerifiedManifest} />
+            {blueprintDraft.verifiedUploadId ? (
+              <p role="status"><span className={styles.pill}>Bytes verificados</span> · upload {blueprintDraft.verifiedUploadId}</p>
+            ) : (
+              <p>Você também pode informar uma origem HTTPS externa manualmente; nesse caso a plataforma registra a declaração, mas não afirma ter verificado os bytes remotos.</p>
+            )}
+
             <label htmlFor="ugc-manifest-uri">URI HTTPS do manifesto de assets</label>
             <input
               id="ugc-manifest-uri"
@@ -366,9 +398,9 @@ export function UgcCreatorStudio() {
               value={blueprintDraft.assetManifestUri}
               placeholder="https://exemplo.com/objeto/manifest.json"
               aria-describedby="ugc-manifest-help"
-              onChange={(event) => setBlueprintDraft((current) => ({ ...current, assetManifestUri: event.target.value }))}
+              onChange={(event) => setBlueprintDraft((current) => ({ ...current, assetManifestUri: event.target.value, verifiedUploadId: "" }))}
             />
-            <p id="ugc-manifest-help">Obrigatório HTTPS. URLs com usuário ou senha embutidos não são aceitas.</p>
+            <p id="ugc-manifest-help">Obrigatório HTTPS. URLs com usuário ou senha embutidos não são aceitas. Alterar manualmente a URI remove o vínculo de upload verificado.</p>
 
             <label htmlFor="ugc-content-hash">SHA-256 do manifesto/asset</label>
             <input
@@ -382,9 +414,9 @@ export function UgcCreatorStudio() {
               autoCorrect="off"
               value={blueprintDraft.contentHash}
               aria-describedby="ugc-hash-help"
-              onChange={(event) => setBlueprintDraft((current) => ({ ...current, contentHash: event.target.value.replace(/\s/g, "").toLowerCase() }))}
+              onChange={(event) => setBlueprintDraft((current) => ({ ...current, contentHash: event.target.value.replace(/\s/g, "").toLowerCase(), verifiedUploadId: "" }))}
             />
-            <p id="ugc-hash-help">Exatamente 64 caracteres hexadecimais. Este hash declara integridade; não significa que os bytes remotos já foram escaneados.</p>
+            <p id="ugc-hash-help">Exatamente 64 caracteres hexadecimais. Alterar manualmente o hash remove o vínculo de upload verificado.</p>
 
             <label htmlFor="ugc-royalty">Royalty em basis points (0–5000)</label>
             <input id="ugc-royalty" className={styles.input} type="number" min="0" max="5000" step="1" value={blueprintDraft.royaltyBps} onChange={(event) => setBlueprintDraft((current) => ({ ...current, royaltyBps: event.target.value }))} />
@@ -468,7 +500,7 @@ export function UgcCreatorStudio() {
                   <div>
                     <h4>{blueprint.name} · v{blueprint.version}</h4>
                     <p>{blueprint.category} · {blueprintStatus(blueprint.status)} · royalty {Number(blueprint.royalty_bps) / 100}%</p>
-                    <p><span className={styles.pill}>{integrityLabel(blueprint)}</span></p>
+                    <p><span className={styles.pill}>{integrityLabel(blueprint)}</span>{blueprint.verified_at ? ` · verificado ${dateTime(blueprint.verified_at)}` : ""}</p>
                     <p className={styles.code}>{blueprint.asset_manifest_uri}</p>
                     <p className={styles.code}>SHA-256 {blueprint.content_hash}</p>
                   </div>
