@@ -60,7 +60,7 @@ function parseGlb(bytes: Buffer): ParsedGlb {
 
   let offset = 12;
   let document: JsonObject | null = null;
-  let bin = new Uint8Array(0);
+  let bin: Uint8Array = new Uint8Array(0);
   while (offset + 8 <= bytes.length) {
     const length = bytes.readUInt32LE(offset);
     const type = bytes.readUInt32LE(offset + 4);
@@ -162,7 +162,6 @@ function validatePrimitiveTangents(
     const ty = readFloat(data, tangentOffset + 4, `${primitiveLabel}.TANGENT[${vertex}].y`);
     const tz = readFloat(data, tangentOffset + 8, `${primitiveLabel}.TANGENT[${vertex}].z`);
     const handedness = readFloat(data, tangentOffset + 12, `${primitiveLabel}.TANGENT[${vertex}].w`);
-    // UV é lido aqui também para impedir que NaN/Infinity chegue ao sampler.
     readFloat(data, uvOffset, `${primitiveLabel}.TEXCOORD_0[${vertex}].u`);
     readFloat(data, uvOffset + 4, `${primitiveLabel}.TEXCOORD_0[${vertex}].v`);
 
