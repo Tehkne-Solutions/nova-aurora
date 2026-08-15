@@ -155,7 +155,7 @@ export function multiply4(a: Mat4, b: Mat4): number[] {
   return out;
 }
 
-function normalizeQuat(value: Quat): Quat {
+function normalizeQuat(value: Quat): [number, number, number, number] {
   const length = Math.hypot(value[0], value[1], value[2], value[3]);
   if (!Number.isFinite(length) || length <= 1e-8) throw new Error("Quaternion degenerado.");
   return [value[0] / length, value[1] / length, value[2] / length, value[3] / length];
@@ -234,6 +234,7 @@ function worldMatrices(nodes: readonly NodeTrs[], parents: readonly (number | nu
     visiting.add(index);
     const local = trsMatrix(nodes[index]!.translation, nodes[index]!.rotation, nodes[index]!.scale);
     const parent = parents[index];
+    if (parent === undefined) throw new Error(`Parent de node ${index} não foi materializado.`);
     const world = parent === null ? local : multiply4(resolve(parent), local);
     visiting.delete(index);
     cache[index] = world;
