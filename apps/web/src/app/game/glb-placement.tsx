@@ -1,3 +1,3 @@
-export { GlbPlacement } from "./glb-pbr-lite-placement";
+export { GlbPlacement } from "./glb-textured-placement";
 
 // Tehkné Solutions
