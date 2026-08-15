@@ -10,6 +10,10 @@ import {
   type GlbTextureSecurityReport
 } from "./glb-embedded-texture-security.js";
 import {
+  validateGlbNormalMapTangents,
+  type GlbTangentSecurityReport
+} from "./glb-tangent-security.js";
+import {
   GlbSecurityError,
   validateGlbForRuntime,
   type GlbSecurityReport
@@ -232,10 +236,12 @@ export async function registerUgcBinaryAssetRoutes(app: FastifyInstance): Promis
 
         let glbSecurity: GlbSecurityReport | null = null;
         let glbTextureSecurity: GlbTextureSecurityReport | null = null;
+        let glbTangentSecurity: GlbTangentSecurityReport | null = null;
         if (String(session.content_type) === "model/gltf-binary") {
           try {
             glbSecurity = validateGlbForRuntime(bytes);
             glbTextureSecurity = validateGlbEmbeddedTextures(bytes);
+            glbTangentSecurity = validateGlbNormalMapTangents(bytes);
           } catch (error) {
             const code = error instanceof GlbSecurityError ? error.code : "invalid-structure";
             await tx`
@@ -256,7 +262,7 @@ export async function registerUgcBinaryAssetRoutes(app: FastifyInstance): Promis
           SET status='scanning',updated_at=now()
           WHERE id=${uploadId}::uuid
         `;
-        return { kind: "claimed" as const, session, receivedSha, glbSecurity, glbTextureSecurity };
+        return { kind: "claimed" as const, session, receivedSha, glbSecurity, glbTextureSecurity, glbTangentSecurity };
       });
 
       if (claim.kind === "expired") throw app.httpErrors.gone("Sessão binária expirada.");
@@ -336,7 +342,8 @@ export async function registerUgcBinaryAssetRoutes(app: FastifyInstance): Promis
             malwareScan: "clean",
             alreadyClean: false,
             ...(claim.glbSecurity ? { glbSecurity: claim.glbSecurity } : {}),
-            ...(claim.glbTextureSecurity ? { glbTextureSecurity: claim.glbTextureSecurity } : {})
+            ...(claim.glbTextureSecurity ? { glbTextureSecurity: claim.glbTextureSecurity } : {}),
+            ...(claim.glbTangentSecurity ? { glbTangentSecurity: claim.glbTangentSecurity } : {})
           },
           signature: "Tehkné Solutions"
         };
