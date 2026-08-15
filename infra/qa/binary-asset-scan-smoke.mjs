@@ -135,6 +135,74 @@ for (const forbidden of ["quarantine_object_key", "clean_object_key", "scanner_s
   if (libraryJson.includes(forbidden)) throw new Error(`Biblioteca expôs metadado privado proibido: ${forbidden}.`);
 }
 
+const bundleManifest = {
+  schemaVersion: 1,
+  kind: "nova-aurora-ugc-asset-bundle",
+  blueprint: { name: `Bundle QA ${nonce}`, category: "component", version: 1 },
+  assets: [{
+    assetId: upload.id,
+    role: "primary",
+    uri: cleanLibraryAsset.assetUri,
+    sha256: cleanSha,
+    contentType: "image/png",
+    sizeBytes: cleanBytes.length,
+    fileName: `release-qa-${nonce}.png`
+  }],
+  integrity: { assetPolicy: "clean-only", algorithm: "sha256" },
+  signature: "Tehkné Solutions"
+};
+const bundleBytes = Buffer.from(JSON.stringify(bundleManifest), "utf8");
+const bundleSha = createHash("sha256").update(bundleBytes).digest("hex");
+const manifestSession = await requireJson("/v1/ugc/assets/manifests/uploads", {
+  method: "POST",
+  headers: { ...authHeaders, "content-type": "application/json" },
+  body: JSON.stringify({ fileName: `bundle-${nonce}.json`, sizeBytes: bundleBytes.length, sha256: bundleSha })
+});
+const manifestUpload = manifestSession?.upload;
+if (!manifestUpload?.id || !manifestUpload?.path || manifestUpload.method !== "POST") {
+  throw new Error("Compositor QA não recebeu sessão válida de upload do manifesto.");
+}
+const manifestResponse = await requestJson(manifestUpload.path, {
+  method: "POST",
+  headers: { ...authHeaders, "content-type": "application/octet-stream" },
+  body: new Uint8Array(bundleBytes)
+});
+if (!manifestResponse.response.ok) {
+  throw new Error(`Upload do manifesto composto falhou (${manifestResponse.response.status}): ${manifestResponse.text.slice(0, 1000)}`);
+}
+const verifiedManifest = manifestResponse.payload?.manifest;
+if (!verifiedManifest?.verifiedByPlatform || verifiedManifest.uploadId !== manifestUpload.id || verifiedManifest.sha256 !== bundleSha) {
+  throw new Error("Manifesto composto não foi confirmado byte a byte pelo object storage.");
+}
+if (!String(verifiedManifest.assetManifestUri ?? "").startsWith("https://")) {
+  throw new Error("Manifesto composto verificado não recebeu URI canônica HTTPS.");
+}
+
+const blueprint = await requireJson("/v1/ugc/studio/blueprints", {
+  method: "POST",
+  headers: { ...authHeaders, "content-type": "application/json" },
+  body: JSON.stringify({
+    name: `Bundle QA ${nonce}`,
+    category: "component",
+    version: 1,
+    assetManifestUri: verifiedManifest.assetManifestUri,
+    contentHash: bundleSha,
+    royaltyBps: 500,
+    tokenizationStatus: "disabled",
+    verifiedUploadId: manifestUpload.id
+  })
+});
+const blueprintId = String(blueprint?.blueprint?.id ?? "");
+if (!blueprintId) throw new Error("Blueprint do bundle composto não retornou ID.");
+if (blueprint?.integrity?.verifiedUploadId !== manifestUpload.id || blueprint?.integrity?.remoteVerification !== true) {
+  throw new Error("Blueprint do bundle não confirmou binding atômico ao manifesto verificado.");
+}
+const blueprintInventory = await requireJson("/v1/ugc/studio/blueprints/me?limit=200", { headers: authHeaders });
+const boundBlueprint = blueprintInventory?.blueprints?.find((entry) => String(entry.id) === blueprintId);
+if (!boundBlueprint || String(boundBlueprint.verified_upload_id ?? "") !== manifestUpload.id || String(boundBlueprint.verified_upload_status ?? "") !== "verified") {
+  throw new Error("Inventário não preservou asset bundle → manifesto → blueprint verificado.");
+}
+
 const report = {
   status: "passed",
   cleanUploadId: upload.id,
@@ -150,6 +218,11 @@ const report = {
   cleanAssetLibraryCanonical: true,
   rejectedAssetLibraryFailClosed: true,
   privateStorageMetadataHidden: true,
+  composedManifestUploadId: manifestUpload.id,
+  composedManifestSha256: bundleSha,
+  composedBlueprintId: blueprintId,
+  cleanAssetManifestBlueprintChain: true,
+  atomicBundleBlueprintBinding: true,
   signature: "Tehkné Solutions"
 };
 await writeFile(reportFile, JSON.stringify(report, null, 2));
