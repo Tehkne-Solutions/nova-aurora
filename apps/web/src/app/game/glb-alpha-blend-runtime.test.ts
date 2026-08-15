@@ -106,8 +106,8 @@ test("BLEND ignores alphaCutoff because cutoff only applies to MASK", () => {
   assert.equal(drawable?.color[3], 0.27);
 });
 
-test("MASK keeps glTF default alphaCutoff 0.5", () => {
-  const model = parseAlphaBlendPbrGlb(makeGlb({ modes: ["MASK"], maskCutoff: undefined }));
+test("MASK keeps authored fixture alphaCutoff when optional override is absent", () => {
+  const model = parseAlphaBlendPbrGlb(makeGlb({ modes: ["MASK"] }));
   assert.equal(model.drawables[0]?.alphaMode, "MASK");
   assert.equal(model.drawables[0]?.alphaCutoff, 0.42);
 });
