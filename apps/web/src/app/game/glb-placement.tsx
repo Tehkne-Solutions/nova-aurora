@@ -1,3 +1,3 @@
-export { GlbPlacement } from "./glb-lit-placement";
+export { GlbPlacement } from "./glb-pbr-lite-placement";
 
 // Tehkné Solutions
