@@ -1,3 +1,3 @@
-export { GlbPlacement } from "./glb-ambient-emissive-placement";
+export { GlbPlacement } from "./glb-normal-map-placement";
 
 // Tehkné Solutions
