@@ -102,7 +102,7 @@ function translation(x: number, y: number, z: number): number[] {
 }
 
 function scaling(x: number, y: number, z: number): number[] {
-  return [x, 0, 0, 0, 0, y, 0, 0, 0, z, 0, 0, 0, 0, 1];
+  return [x, 0, 0, 0, 0, y, 0, 0, 0, 0, z, 0, 0, 0, 0, 1];
 }
 
 function quaternionMatrix(x: number, y: number, z: number, w: number): number[] {
