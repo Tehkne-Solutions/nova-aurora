@@ -1,0 +1,50 @@
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { test } from "node:test";
+
+const source = readFileSync(new URL("./glb-node-animation-placement.tsx", import.meta.url), "utf8");
+const canonical = readFileSync(new URL("./glb-placement.ts", import.meta.url), "utf8");
+
+test("canonical GLB entrypoint activates node animation v10", () => {
+  assert.match(canonical, /export \{ GlbPlacement \} from "\.\/glb-node-animation-placement";/);
+  assert.doesNotMatch(canonical, /glb-alpha-blend-placement/);
+  assert.match(source, /data-glb-renderer="first-party-webgl-pbr-node-animation-v10"/);
+});
+
+test("animated runtime schedules cancellable frames only while visible", () => {
+  assert.match(source, /requestAnimationFrame\(/);
+  assert.match(source, /cancelAnimationFrame\(frameId\)/);
+  assert.match(source, /if \(!hasAnimation \|\| !visible \|\| disposed \|\| frameId !== null\) return;/);
+  assert.match(source, /new IntersectionObserver\(/);
+  assert.match(source, /if \(visible\) resume\(\); else pause\(\);/);
+});
+
+test("animation clock excludes time spent outside the viewport", () => {
+  assert.match(source, /let accumulatedVisibleMs = 0;/);
+  assert.match(source, /let visibleStartMs: number \| null = null;/);
+  assert.match(source, /accumulatedVisibleMs \+= Math\.max\(0, performance\.now\(\) - visibleStartMs\)/);
+  assert.match(source, /elapsedSeconds\(timestamp\)/);
+});
+
+test("cleanup cancels frame loop, disconnects observers and frees GPU resources", () => {
+  assert.match(source, /disposed = true;\s*pause\(\);/s);
+  assert.match(source, /resizeObserver\.disconnect\(\);/);
+  assert.match(source, /intersectionObserver\?\.disconnect\(\);/);
+  assert.match(source, /gl\.deleteBuffer\(resource\.positionBuffer\)/);
+  assert.match(source, /gl\.deleteTexture\(whiteTexture\); gl\.deleteProgram\(program\);/);
+});
+
+test("static GLB remains supported without starting a RAF animation loop", () => {
+  assert.match(source, /const hasAnimation = animationModel\.clips\.length > 0 && animationModel\.clips\[0\]!\.durationSeconds > 0;/);
+  assert.match(source, /if \(hasAnimation\) \{ visibleStartMs = performance\.now\(\); schedule\(\); \}/);
+  assert.match(source, /setAnimation\(animationModel\.clips\.length > 0 \? "animated" : "static"\)/);
+});
+
+test("animated transparency uses transformed centroid and inverse-transpose normals", () => {
+  assert.match(source, /normalMatrix3\(model\)/);
+  assert.match(source, /transformPoint\(model, resource\.drawable\.centroid\)/);
+  assert.match(source, /transparent\.sort\(\(left, right\) => right\.depth - left\.depth\)/);
+  assert.match(source, /determinant3\(model\) < 0 \? -1 : 1/);
+});
+
+// Tehkné Solutions
