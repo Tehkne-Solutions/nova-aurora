@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { BinaryAssetLibrary } from "./asset-library";
+import { ManagedManifestComposer } from "./managed-manifest-composer";
 import { UgcCreatorStudio } from "./ugc-studio";
 import { UgcManifestIntegrityGate } from "./ugc-manifest-integrity";
 import styles from "../../social.module.css";
@@ -30,6 +31,7 @@ export default function UgcCreatorStudioPage() {
         </UgcManifestIntegrityGate>
 
         <BinaryAssetLibrary />
+        <ManagedManifestComposer />
 
         <footer className={styles.footer}>Tehkné Solutions</footer>
       </div>
