@@ -1,5 +1,5 @@
-export { GlbPlacement } from "./glb-alpha-blend-placement";
+export { GlbPlacement } from "./glb-node-animation-placement";
 
-// Canonical TypeScript entrypoint. The legacy .tsx module is intentionally
-// shadowed until the next dead-file cleanup after v9 promotion.
+// Canonical TypeScript entrypoint for the certified first-party GLB runtime.
+// v10 preserves the full v9 PBR + alpha pipeline and adds certified node TRS animation.
 // Tehkné Solutions
