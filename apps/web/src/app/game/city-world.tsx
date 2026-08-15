@@ -3,6 +3,7 @@
 import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
 import { CharacterSprite } from "./character-sprite";
 import { CitySceneArt } from "./city-scene-art";
+import { GlbPlacement } from "./glb-placement";
 import baseStyles from "./game.module.css";
 import polishStyles from "./polish.module.css";
 import ugcStyles from "./ugc-world.module.css";
@@ -21,7 +22,9 @@ type WorldPlacement = Readonly<{
   offsetX: number;
   offsetY: number;
   scalePercent: number;
+  rotationYDegrees: number;
   contentType: string;
+  renderMode: "image-billboard-v1" | "glb-model-v1";
   assetPath: string | null;
   assetUri: string | null;
 }>;
@@ -116,20 +119,32 @@ export function CityWorld({ districts, currentLocationCode, visualLocationCode, 
       {placements.map((placement) => {
         const location = locations.find((item) => item.code === placement.locationCode);
         const assetUrl = placementAssetUrl(placement);
-        if (!location || !assetUrl || !placement.contentType.startsWith("image/")) return null;
+        if (!location || !assetUrl) return null;
+        const isImage = placement.renderMode === "image-billboard-v1" && placement.contentType.startsWith("image/");
+        const isGlb = placement.renderMode === "glb-model-v1" && placement.contentType === "model/gltf-binary";
+        if (!isImage && !isGlb) return null;
         const placementStyle: CSSProperties = {
           ...position(location),
           transform: `translate(calc(-50% + ${placement.offsetX}px), calc(-50% + ${placement.offsetY}px)) scale(${placement.scalePercent / 100})`
         };
+        const current = placement.locationCode === currentLocationCode;
         return (
           <figure
             aria-label={`Objeto criado por usuário: ${placement.label}`}
-            className={styles.ugcWorldPlacement}
-            data-current={placement.locationCode === currentLocationCode ? "true" : "false"}
+            className={`${styles.ugcWorldPlacement} ${isGlb ? styles.ugcWorldModel : ""}`}
+            data-current={current ? "true" : "false"}
+            data-render-mode={placement.renderMode}
             key={placement.id}
             style={placementStyle}
           >
-            <img alt="" src={assetUrl} />
+            {isImage ? <img alt="" src={assetUrl} /> : (
+              <GlbPlacement
+                assetUrl={assetUrl}
+                current={current}
+                label={placement.label}
+                rotationYDegrees={placement.rotationYDegrees}
+              />
+            )}
             <figcaption>{placement.label}</figcaption>
           </figure>
         );
