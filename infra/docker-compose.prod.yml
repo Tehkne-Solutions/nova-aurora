@@ -16,7 +16,7 @@ x-app-environment: &app-environment
   OBJECT_STORAGE_ACCESS_KEY_FILE: /run/secrets/object_storage_access_key
   OBJECT_STORAGE_SECRET_KEY_FILE: /run/secrets/object_storage_secret_key
   OBJECT_STORAGE_UPLOAD_SIGNING_KEY_FILE: /run/secrets/object_storage_upload_signing_key
-  OBJECT_STORAGE_ENABLED: ${OBJECT_STORAGE_ENABLED:-true}
+  OBJECT_STORAGE_ENABLED: ${OBJECT_STORAGE_ENABLED:-false}
   OBJECT_STORAGE_ENDPOINT: ${OBJECT_STORAGE_ENDPOINT:-http://object-storage:8333}
   OBJECT_STORAGE_BUCKET: ${OBJECT_STORAGE_BUCKET:-nova-aurora-ugc}
   OBJECT_STORAGE_REGION: ${OBJECT_STORAGE_REGION:-us-east-1}
@@ -152,7 +152,6 @@ services:
       migrate: { condition: service_completed_successfully }
       postgres: { condition: service_healthy }
       redis: { condition: service_healthy }
-      object-storage: { condition: service_healthy }
     healthcheck:
       test: ["CMD", "node", "-e", "fetch('http://localhost:4000/health/ready').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
       interval: 15s
@@ -174,7 +173,6 @@ services:
       migrate: { condition: service_completed_successfully }
       postgres: { condition: service_healthy }
       redis: { condition: service_healthy }
-      object-storage: { condition: service_healthy }
     healthcheck:
       test: ["CMD", "node", "-e", "fetch('http://localhost:4010/health/ready').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
       interval: 15s

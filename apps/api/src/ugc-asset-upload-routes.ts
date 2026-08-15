@@ -8,7 +8,6 @@ import { deleteObject, getObject, objectStorageEnabled, putObject } from "./obje
 
 const economySql = db();
 const MAX_MANIFEST_BYTES = 1024 * 1024;
-const UPLOAD_TTL_MS = 10 * 60 * 1000;
 
 const createUploadSchema = z.object({
   fileName: z.string().trim().min(1).max(180),
@@ -96,17 +95,20 @@ export async function registerUgcAssetUploadRoutes(app: FastifyInstance): Promis
     const actor = await requireActor(app, request);
     const body = createUploadSchema.parse(request.body);
     const id = randomUUID();
-    const expiresAt = new Date(Date.now() + UPLOAD_TTL_MS);
     const key = objectKey(actor.userId, id);
-    await economySql`
+    const inserted = (await economySql`
       INSERT INTO ugc_asset_upload_sessions(
         id,owner_user_id,object_key,file_name,content_type,expected_size_bytes,
         declared_sha256,status,expires_at
       ) VALUES(
         ${id}::uuid,${actor.userId}::uuid,${key},${body.fileName},'application/json',
-        ${body.sizeBytes},${body.sha256},'pending',${expiresAt.toISOString()}::timestamptz
+        ${body.sizeBytes},${body.sha256},'pending',now() + interval '10 minutes'
       )
-    `;
+      RETURNING expires_at
+    `)[0];
+    if (!inserted?.expires_at) throw new Error("Sessão de upload criada sem expiração persistida.");
+    const expiresAt = new Date(String(inserted.expires_at));
+    if (!Number.isFinite(expiresAt.getTime())) throw new Error("Expiração persistida da sessão de upload é inválida.");
     const token = uploadToken({
       id,
       ownerUserId: actor.userId,
@@ -141,7 +143,10 @@ export async function registerUgcAssetUploadRoutes(app: FastifyInstance): Promis
 
     const result = await economySql.begin("isolation level serializable", async (tx) => {
       const session = (await tx`
-        SELECT * FROM ugc_asset_upload_sessions WHERE id=${uploadId}::uuid FOR UPDATE
+        SELECT *,expires_at <= now() is_expired
+        FROM ugc_asset_upload_sessions
+        WHERE id=${uploadId}::uuid
+        FOR UPDATE
       `)[0];
       if (!session) throw app.httpErrors.notFound("Sessão de upload não encontrada.");
       if (String(session.status) === "verified") {
@@ -149,18 +154,25 @@ export async function registerUgcAssetUploadRoutes(app: FastifyInstance): Promis
           id: uploadId,
           sha256: String(session.verified_sha256),
           sizeBytes: Number(session.verified_size_bytes),
-          alreadyVerified: true
+          alreadyVerified: true,
+          expired: false
         };
       }
       if (String(session.status) !== "pending") throw app.httpErrors.conflict("Sessão de upload não aceita mais conteúdo.");
 
       const expiresAt = new Date(String(session.expires_at));
-      if (expiresAt.getTime() <= Date.now()) {
+      if (Boolean(session.is_expired)) {
         await tx`
           UPDATE ugc_asset_upload_sessions SET status='expired',updated_at=now()
           WHERE id=${uploadId}::uuid
         `;
-        throw app.httpErrors.gone("Sessão de upload expirada.");
+        return {
+          id: uploadId,
+          sha256: String(session.declared_sha256),
+          sizeBytes: Number(session.expected_size_bytes),
+          alreadyVerified: false,
+          expired: true
+        };
       }
 
       const expectedToken = uploadToken({
@@ -210,9 +222,12 @@ export async function registerUgcAssetUploadRoutes(app: FastifyInstance): Promis
         id: uploadId,
         sha256: persistedSha,
         sizeBytes: persisted.length,
-        alreadyVerified: false
+        alreadyVerified: false,
+        expired: false
       };
     });
+
+    if (result.expired) throw app.httpErrors.gone("Sessão de upload expirada.");
 
     return {
       manifest: {
