@@ -23,6 +23,7 @@ type WorldPlacement = Readonly<{
   offsetY: number;
   scalePercent: number;
   rotationYDegrees: number;
+  animationState?: string;
   contentType: string;
   renderMode: "image-billboard-v1" | "glb-model-v1";
   assetPath: string | null;
@@ -132,6 +133,7 @@ export function CityWorld({ districts, currentLocationCode, visualLocationCode, 
           <figure
             aria-label={`Objeto criado por usuário: ${placement.label}`}
             className={`${styles.ugcWorldPlacement} ${isGlb ? styles.ugcWorldModel : ""}`}
+            data-animation-state={placement.animationState ?? "idle"}
             data-current={current ? "true" : "false"}
             data-render-mode={placement.renderMode}
             key={placement.id}
@@ -139,6 +141,7 @@ export function CityWorld({ districts, currentLocationCode, visualLocationCode, 
           >
             {isImage ? <img alt="" src={assetUrl} /> : (
               <GlbPlacement
+                animationState={placement.animationState}
                 assetUrl={assetUrl}
                 current={current}
                 label={placement.label}
