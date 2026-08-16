@@ -108,8 +108,9 @@ export function CityWorld({ districts, currentLocationCode, visualLocationCode, 
         body: JSON.stringify({ animationState: next })
       });
       const payload = await response.json() as { animationState?: AnimationState; message?: string };
-      if (!response.ok || !payload.animationState) throw new Error(payload.message ?? `Interação UGC ${response.status}`);
-      setPlacements((currentPlacements) => currentPlacements.map((item) => item.id === placement.id ? { ...item, animationState: payload.animationState } : item));
+      const returnedState = payload.animationState;
+      if (!response.ok || !returnedState) throw new Error(payload.message ?? `Interação UGC ${response.status}`);
+      setPlacements((currentPlacements) => currentPlacements.map((item) => item.id === placement.id ? { ...item, animationState: returnedState } : item));
       setInteractionMessage(`${placement.label}: interação concluída.`);
     } catch (error) {
       setInteractionMessage(error instanceof Error ? error.message : "Não foi possível interagir com este objeto.");
