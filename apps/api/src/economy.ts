@@ -34,13 +34,19 @@ async function post(tx: Tx, input: { key: string; type: string; entries: { code:
 
 export async function snapshot(ownerId: string){
   const sql=db();
-  const balances=await sql`
-    SELECT a.code,COALESCE(SUM(e.amount_minor),0)::bigint value
-    FROM ledger_accounts a
-    LEFT JOIN ledger_entries e ON e.account_id=a.id
-    WHERE a.owner_id=${ownerId}::uuid
-    GROUP BY a.id ORDER BY a.code
+  const balanceRows=await sql`
+    SELECT code,posted_minor,reserved_minor,available_minor
+    FROM ledger_account_balances
+    WHERE owner_id=${ownerId}::uuid
+    ORDER BY code
   `;
+  const balances=balanceRows.map((row)=>({
+    code:String(row.code),
+    value:Number(row.available_minor),
+    postedMinor:Number(row.posted_minor),
+    reservedMinor:Number(row.reserved_minor),
+    availableMinor:Number(row.available_minor)
+  }));
   const inventory=await sql`
     SELECT i.code,SUM(l.quantity_minor-l.reserved_minor)::bigint quantity
     FROM inventory_lots l

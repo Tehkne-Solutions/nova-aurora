@@ -157,6 +157,28 @@ async function waitForAuthenticatedSurface(label, context, timeoutMs = 20_000) {
   }, timeoutMs);
 }
 
+async function waitForMarketProductionConsole(timeoutMs = 20_000) {
+  return retry(async () => {
+    const state = await evaluate(`(() => {
+      const node = document.querySelector('[aria-label="Console autenticada de mercado e produção de Nova Aurora"][data-authenticated="true"]');
+      const selects = node ? [...node.querySelectorAll('select')] : [];
+      return {
+        found: Boolean(node),
+        refreshMs: node?.getAttribute('data-live-refresh-ms') || '',
+        text: node?.textContent?.trim() || '',
+        itemOptions: selects[0]?.options?.length || 0,
+        recipeOptions: selects[2]?.options?.length || 0
+      };
+    })()`);
+    if (!state.found) throw new Error("Console de mercado e produção ainda não foi montada.");
+    if (state.refreshMs !== "5000") throw new Error(`Refresh econômico inesperado: ${state.refreshMs || "vazio"}.`);
+    if (!String(state.text).includes("Saldo disponível")) throw new Error("Saldo disponível ainda não foi materializado.");
+    if (state.itemOptions < 1) throw new Error("Catálogo de bens ainda não foi materializado.");
+    if (state.recipeOptions < 1) throw new Error("Catálogo de receitas ainda não foi materializado.");
+    return state;
+  }, timeoutMs);
+}
+
 async function clickHubTab(label) {
   const clicked = await evaluate(`(() => {
     const navigation = document.querySelector('nav[aria-label="Áreas do hub social"]');
@@ -269,7 +291,18 @@ for (const path of [
       "Mercado autenticado de Nova Aurora",
       "Marketplace público"
     );
-    report.economySurfaces = { ...(report.economySurfaces ?? {}), marketplace: { ready: true, text: state.text.slice(0, 240) } };
+    const consoleState = await waitForMarketProductionConsole();
+    report.economySurfaces = {
+      ...(report.economySurfaces ?? {}),
+      marketplace: { ready: true, text: state.text.slice(0, 240) },
+      marketProduction: {
+        ready: true,
+        refreshMs: consoleState.refreshMs,
+        itemOptions: consoleState.itemOptions,
+        recipeOptions: consoleState.recipeOptions,
+        text: consoleState.text.slice(0, 240)
+      }
+    };
   }
   if (path === "/dashboard") {
     await waitForHeading("h1", "Sua economia", "Dashboard econômico");
@@ -349,6 +382,7 @@ if (exceptions.length > 0) throw new Error(`Exceções no navegador: ${exception
 if (
   !report.economySurfaces?.business?.ready
   || !report.economySurfaces?.marketplace?.ready
+  || !report.economySurfaces?.marketProduction?.ready
   || !report.economySurfaces?.dashboard?.ready
 ) {
   throw new Error("Superfícies econômicas autenticadas não produziram evidência completa.");
@@ -375,6 +409,9 @@ console.log(JSON.stringify({
   ugcStudioReady: report.ugcStudio?.ready ?? false,
   authenticatedBusinessReady: report.economySurfaces?.business?.ready ?? false,
   authenticatedMarketplaceReady: report.economySurfaces?.marketplace?.ready ?? false,
+  marketProductionConsoleReady: report.economySurfaces?.marketProduction?.ready ?? false,
   authenticatedDashboardReady: report.economySurfaces?.dashboard?.ready ?? false,
   signature: "Tehkné Solutions"
 }));
+
+// Tehkné Solutions

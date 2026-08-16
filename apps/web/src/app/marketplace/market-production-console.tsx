@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react
 import styles from "./market-production-console.module.css";
 
 const API_URL = (process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000").replace(/\/$/, "");
+const LIVE_REFRESH_INTERVAL_MS = 5_000;
 
 type MarketItem = Readonly<{
   code: string;
@@ -60,8 +61,16 @@ type ProductionOrder = Readonly<{
   completedAt: string | null;
 }>;
 
+type EconomyBalance = Readonly<{
+  code: string;
+  value: string | number;
+  postedMinor?: string | number;
+  reservedMinor?: string | number;
+  availableMinor?: string | number;
+}>;
+
 type EconomySnapshot = Readonly<{
-  balances: readonly Readonly<{ code: string; value: string | number }>[];
+  balances: readonly EconomyBalance[];
   inventory: readonly Readonly<{ code: string; quantity: string | number }>[];
   orders: readonly MarketOrder[];
 }>;
@@ -200,6 +209,38 @@ export function MarketProductionConsole() {
     void refreshMarket(selectedItem.code);
   }, [refreshMarket, selectedItem]);
 
+  useEffect(() => {
+    let disposed = false;
+    let inFlight = false;
+
+    async function refreshLiveState(): Promise<void> {
+      if (disposed || inFlight || document.visibilityState === "hidden") return;
+      inFlight = true;
+      try {
+        await Promise.all([
+          refreshPrivate(),
+          selectedItemCode ? refreshMarket(selectedItemCode) : Promise.resolve()
+        ]);
+      } catch {
+        // Preserve the last known-good economy state; explicit user actions still surface errors.
+      } finally {
+        inFlight = false;
+      }
+    }
+
+    const timer = window.setInterval(() => void refreshLiveState(), LIVE_REFRESH_INTERVAL_MS);
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") void refreshLiveState();
+    };
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
+    return () => {
+      disposed = true;
+      window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, [refreshMarket, refreshPrivate, selectedItemCode]);
+
   async function run(label: string, operation: () => Promise<unknown>): Promise<void> {
     setBusy(true);
     setMessage(label);
@@ -250,10 +291,18 @@ export function MarketProductionConsole() {
   }
 
   const openOrders = (snapshot?.orders ?? []).filter((order) => ["open", "partial"].includes(order.status));
-  const wallet = snapshot?.balances[0]?.value ?? 0;
+  const wallet = snapshot?.balances[0] ?? null;
+  const availableMinor = wallet?.availableMinor ?? wallet?.value ?? 0;
+  const postedMinor = wallet?.postedMinor ?? availableMinor;
+  const reservedMinor = wallet?.reservedMinor ?? 0;
 
   return (
-    <section aria-label="Console autenticada de mercado e produção de Nova Aurora" className={styles.console} data-authenticated="true">
+    <section
+      aria-label="Console autenticada de mercado e produção de Nova Aurora"
+      className={styles.console}
+      data-authenticated="true"
+      data-live-refresh-ms={LIVE_REFRESH_INTERVAL_MS}
+    >
       <header className={styles.header}>
         <div>
           <p className={styles.eyebrow}>MERCADO DE BENS · PRODUÇÃO REAL</p>
@@ -264,8 +313,9 @@ export function MarketProductionConsole() {
           </p>
         </div>
         <div className={styles.wallet}>
-          <span>Carteira disponível no snapshot</span>
-          <strong>{money(wallet)}</strong>
+          <span>Saldo disponível</span>
+          <strong>{money(availableMinor)}</strong>
+          <small>Postado {money(postedMinor)} · reservado {money(reservedMinor)}</small>
         </div>
       </header>
 
