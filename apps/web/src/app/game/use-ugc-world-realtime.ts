@@ -17,6 +17,7 @@ type PlacementUpdatedEvent = Readonly<{
   payload?: {
     placementId?: unknown;
     animationState?: unknown;
+    locationCode?: unknown;
   };
 }>;
 
@@ -36,6 +37,7 @@ export function useUgcWorldRealtime(
 ): void {
   const locationRef = useRef(locationCode);
   const handlerRef = useRef(onPlacementState);
+  const heartbeatRef = useRef<() => void>(() => undefined);
   locationRef.current = locationCode;
   handlerRef.current = onPlacementState;
 
@@ -59,6 +61,7 @@ export function useUgcWorldRealtime(
         locationCode: locationRef.current
       }));
     }
+    heartbeatRef.current = heartbeat;
 
     function scheduleReconnect(): void {
       if (disposed || reconnectTimer !== null || documentIsHidden()) return;
@@ -79,6 +82,8 @@ export function useUgcWorldRealtime(
         if (event.eventType !== "ugc.world.placement.updated") return;
         const placementId = event.payload?.placementId;
         const animationState = normalizeAnimationState(event.payload?.animationState);
+        const eventLocationCode = event.payload?.locationCode;
+        if (typeof eventLocationCode === "string" && eventLocationCode !== locationRef.current) return;
         if (typeof placementId !== "string" || !animationState) return;
         handlerRef.current(placementId, animationState);
       } catch {
@@ -136,6 +141,7 @@ export function useUgcWorldRealtime(
 
     return () => {
       disposed = true;
+      heartbeatRef.current = () => undefined;
       clearHeartbeat();
       if (reconnectTimer !== null) window.clearTimeout(reconnectTimer);
       document.removeEventListener("visibilitychange", handleVisibilityChange);
@@ -143,6 +149,10 @@ export function useUgcWorldRealtime(
       socket = null;
     };
   }, []);
+
+  useEffect(() => {
+    if (!documentIsHidden()) heartbeatRef.current();
+  }, [locationCode]);
 }
 
 // Tehkné Solutions
