@@ -5,6 +5,17 @@ import { GlbPlacement } from "../../../../game/glb-placement";
 import styles from "../../social.module.css";
 
 const API_URL = (process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000").replace(/\/$/, "");
+const ANIMATION_STATES = ["idle", "open", "close", "activate", "deactivate", "spin"] as const;
+type AnimationState = typeof ANIMATION_STATES[number];
+
+const ANIMATION_LABELS: Record<AnimationState, string> = {
+  idle: "Idle",
+  open: "Abrir",
+  close: "Fechar",
+  activate: "Ativar",
+  deactivate: "Desativar",
+  spin: "Girar"
+};
 
 type RenderableAsset = Readonly<{
   id: string;
@@ -33,6 +44,7 @@ type Placement = Readonly<{
   offsetY: number;
   scalePercent: number;
   rotationYDegrees: number;
+  animationState?: AnimationState;
   contentType: string;
   renderMode: "image-billboard-v1" | "glb-model-v1";
   assetPath: string | null;
@@ -79,6 +91,7 @@ export function WorldPlacementStudio() {
   const [offsetY, setOffsetY] = useState("-70");
   const [scalePercent, setScalePercent] = useState("100");
   const [rotationYDegrees, setRotationYDegrees] = useState("0");
+  const [animationState, setAnimationState] = useState<AnimationState>("idle");
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
@@ -90,7 +103,7 @@ export function WorldPlacementStudio() {
       const [assetResponse, locationResponse, placementResponse] = await Promise.all([
         apiJson<{ assets: RenderableAsset[] }>("/v1/ugc/assets/library/me?status=clean&limit=100"),
         apiJson<{ locations: LocationOption[] }>("/v1/ugc/world/locations"),
-        apiJson<{ placements: Placement[] }>("/v1/ugc/world/placements/me")
+        apiJson<{ placements: Placement[]; animationStates?: readonly AnimationState[] }>("/v1/ugc/world/placements/me")
       ]);
       const renderableAssets = assetResponse.assets.filter(renderable);
       setAssets(renderableAssets);
@@ -142,16 +155,37 @@ export function WorldPlacementStudio() {
           offsetX: parsedOffsetX,
           offsetY: parsedOffsetY,
           scalePercent: parsedScale,
-          rotationYDegrees: selectedIsGlb ? parsedRotation : 0
+          rotationYDegrees: selectedIsGlb ? parsedRotation : 0,
+          animationState: selectedIsGlb ? animationState : "idle"
         })
       });
       setNotice(selectedIsGlb
-        ? "Modelo 3D instalado. O /game já pode renderizá-lo via GLB WebGL v1."
+        ? `Modelo 3D instalado em estado ${ANIMATION_LABELS[animationState]}. O /game usa o mesmo runtime de clips.`
         : "Objeto instalado. O /game já pode renderizá-lo como billboard.");
       setLabel("");
       await load();
     } catch (createError) {
       setError(createError instanceof Error ? createError.message : "Não foi possível instalar o objeto.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function updateAnimationState(placementId: string, nextState: AnimationState) {
+    setBusy(true);
+    setError(null);
+    try {
+      const response = await apiJson<{ placementId: string; animationState: AnimationState }>(`/v1/ugc/world/placements/${placementId}/animation-state`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ animationState: nextState })
+      });
+      setPlacements((current) => current.map((placement) => placement.id === response.placementId
+        ? { ...placement, animationState: response.animationState }
+        : placement));
+      setNotice(`Estado do objeto alterado para ${ANIMATION_LABELS[response.animationState]}.`);
+    } catch (stateError) {
+      setError(stateError instanceof Error ? stateError.message : "Não foi possível alterar o estado do objeto.");
     } finally {
       setBusy(false);
     }
@@ -180,7 +214,7 @@ export function WorldPlacementStudio() {
       <div className={styles.sectionHeader}>
         <div>
           <h3 id="ugc-world-placement-title">Objetos UGC no mundo</h3>
-          <p>Instale imagens ou modelos GLB verificados nos locais da cidade. O banco e a leitura pública continuam fail-closed: somente assets `clean` do próprio criador entram no runtime.</p>
+          <p>Instale imagens ou modelos GLB verificados nos locais da cidade. Modelos 3D podem receber estados persistentes de comportamento; somente o criador controla essas transições nesta etapa.</p>
         </div>
         <button className={styles.buttonQuiet} type="button" disabled={busy} onClick={() => void load()}>Atualizar</button>
       </div>
@@ -198,14 +232,17 @@ export function WorldPlacementStudio() {
                 const next = assets.find((asset) => asset.id === event.target.value);
                 setAssetId(event.target.value);
                 setLabel(next?.fileName ?? "");
-                if (next?.contentType !== "model/gltf-binary") setRotationYDegrees("0");
+                if (next?.contentType !== "model/gltf-binary") {
+                  setRotationYDegrees("0");
+                  setAnimationState("idle");
+                }
               }}>
                 {assets.map((asset) => <option key={asset.id} value={asset.id}>{asset.contentType === "model/gltf-binary" ? "3D · " : "IMG · "}{asset.fileName}</option>)}
               </select>
 
               {selectedAssetReference && selectedAsset ? (
                 selectedIsGlb
-                  ? <GlbPlacement assetUrl={selectedAssetReference} label={`Preview de ${selectedAsset.fileName}`} rotationYDegrees={parsedRotation || 0} />
+                  ? <GlbPlacement animationState={animationState} assetUrl={selectedAssetReference} label={`Preview de ${selectedAsset.fileName}`} rotationYDegrees={parsedRotation || 0} />
                   : <img src={selectedAssetReference} alt={`Preview de ${selectedAsset.fileName}`} style={{ width: 120, height: 90, objectFit: "contain", borderRadius: 12 }} />
               ) : null}
 
@@ -215,7 +252,7 @@ export function WorldPlacementStudio() {
               </select>
 
               <label htmlFor="ugc-world-label">Nome visual</label>
-              <input id="ugc-world-label" className={styles.input} maxLength={80} value={label} onChange={(event) => setLabel(event.target.value)} placeholder={selectedIsGlb ? "Ex.: Totem 3D da minha loja" : "Ex.: Placa da minha loja"} />
+              <input id="ugc-world-label" className={styles.input} maxLength={80} value={label} onChange={(event) => setLabel(event.target.value)} placeholder={selectedIsGlb ? "Ex.: Porta 3D da minha loja" : "Ex.: Placa da minha loja"} />
 
               <label htmlFor="ugc-world-offset-x">Deslocamento horizontal · -120 a 120 px</label>
               <input id="ugc-world-offset-x" className={styles.input} type="number" min="-120" max="120" step="1" value={offsetX} onChange={(event) => setOffsetX(event.target.value)} />
@@ -230,6 +267,10 @@ export function WorldPlacementStudio() {
                 <>
                   <label htmlFor="ugc-world-rotation">Rotação horizontal 3D · 0° a 359°</label>
                   <input id="ugc-world-rotation" className={styles.input} type="number" min="0" max="359" step="1" value={rotationYDegrees} onChange={(event) => setRotationYDegrees(event.target.value)} />
+                  <label htmlFor="ugc-world-animation-state">Estado inicial</label>
+                  <select id="ugc-world-animation-state" className={styles.select} value={animationState} onChange={(event) => setAnimationState(event.target.value as AnimationState)}>
+                    {ANIMATION_STATES.map((state) => <option key={state} value={state}>{ANIMATION_LABELS[state]}</option>)}
+                  </select>
                 </>
               ) : null}
 
@@ -250,15 +291,30 @@ export function WorldPlacementStudio() {
               {placements.map((placement) => {
                 const reference = assetReference(placement);
                 const isGlb = placement.renderMode === "glb-model-v1";
+                const currentState = placement.animationState ?? "idle";
                 return (
                   <article className={styles.activity} key={placement.id}>
                     <div>
                       <h4>{placement.label}</h4>
-                      <p>{placement.locationName ?? placement.locationCode} · {isGlb ? "GLB 3D" : "billboard"} · x {placement.offsetX}px · y {placement.offsetY}px · escala {placement.scalePercent}%{isGlb ? ` · rotação ${placement.rotationYDegrees}°` : ""}</p>
+                      <p>{placement.locationName ?? placement.locationCode} · {isGlb ? "GLB 3D" : "billboard"} · x {placement.offsetX}px · y {placement.offsetY}px · escala {placement.scalePercent}%{isGlb ? ` · rotação ${placement.rotationYDegrees}° · estado ${ANIMATION_LABELS[currentState]}` : ""}</p>
                       {reference ? (
                         isGlb
-                          ? <GlbPlacement assetUrl={reference} label={placement.label} rotationYDegrees={placement.rotationYDegrees} />
+                          ? <GlbPlacement animationState={currentState} assetUrl={reference} label={placement.label} rotationYDegrees={placement.rotationYDegrees} />
                           : <img src={reference} alt="" style={{ width: 90, height: 64, objectFit: "contain", borderRadius: 10 }} />
+                      ) : null}
+                      {isGlb ? (
+                        <div className={styles.formRow}>
+                          <label htmlFor={`ugc-world-state-${placement.id}`}>Estado do objeto</label>
+                          <select
+                            id={`ugc-world-state-${placement.id}`}
+                            className={styles.select}
+                            disabled={busy}
+                            value={currentState}
+                            onChange={(event) => void updateAnimationState(placement.id, event.target.value as AnimationState)}
+                          >
+                            {ANIMATION_STATES.map((state) => <option key={state} value={state}>{ANIMATION_LABELS[state]}</option>)}
+                          </select>
+                        </div>
                       ) : null}
                     </div>
                     <button className={styles.buttonQuiet} type="button" disabled={busy} onClick={() => void removePlacement(placement.id)}>Retirar</button>
