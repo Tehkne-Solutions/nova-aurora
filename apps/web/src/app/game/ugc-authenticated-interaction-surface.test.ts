@@ -37,7 +37,8 @@ test("player interaction posts canonical next state and immediately updates rend
   assert.match(worldSource, /if \(current === "deactivate"\) return "activate"/);
   assert.match(worldSource, /\/v1\/ugc\/world\/placements\/\$\{placement\.id\}\/interactions/);
   assert.match(worldSource, /body: JSON\.stringify\(\{ animationState: next \}\)/);
-  assert.match(worldSource, /\{ \.\.\.item, animationState: payload\.animationState \}/);
+  assert.match(worldSource, /const returnedState = payload\.animationState/);
+  assert.match(worldSource, /\{ \.\.\.item, animationState: returnedState \}/);
 });
 
 test("interactive UGC enables pointer action while retaining visible status and keyboard focus", () => {
