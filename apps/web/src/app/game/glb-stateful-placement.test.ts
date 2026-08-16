@@ -17,7 +17,7 @@ test("canonical GLB entrypoint routes through persisted-state adapter before v10
 });
 
 test("CityWorld transports persisted animationState into the canonical GLB placement", () => {
-  assert.match(cityWorld, /animationState\?: string/);
+  assert.match(cityWorld, /animationState\?: AnimationState/);
   assert.match(cityWorld, /data-animation-state=\{placement\.animationState \?\? "idle"\}/);
   assert.match(cityWorld, /animationState=\{placement\.animationState\}/);
 });
