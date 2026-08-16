@@ -13,6 +13,7 @@ import type { Facing, TimePhase, Weather } from "./world-presentation";
 
 const styles = { ...baseStyles, ...polishStyles, ...ugcStyles, ...visualStyles };
 const API_URL = (process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000").replace(/\/$/, "");
+const UGC_WORLD_REFRESH_INTERVAL_MS = 5000;
 const ANIMATION_STATES = ["idle", "open", "close", "activate", "deactivate", "spin"] as const;
 type AnimationState = typeof ANIMATION_STATES[number];
 
@@ -81,18 +82,43 @@ export function CityWorld({ districts, currentLocationCode, visualLocationCode, 
   const avatarLocation = locations.find((location) => location.code === visualLocationCode) ?? locations[0];
 
   useEffect(() => {
-    const controller = new AbortController();
-    void fetch(`${API_URL}/v1/ugc/world/placements?limit=200`, { signal: controller.signal })
-      .then(async (response) => {
+    let disposed = false;
+    let refreshInFlight = false;
+    let activeController: AbortController | null = null;
+
+    async function refreshWorldPlacements(): Promise<void> {
+      if (disposed || refreshInFlight || document.visibilityState === "hidden") return;
+      refreshInFlight = true;
+      const controller = new AbortController();
+      activeController = controller;
+      try {
+        const response = await fetch(`${API_URL}/v1/ugc/world/placements?limit=200`, { signal: controller.signal });
         if (!response.ok) throw new Error(`UGC world ${response.status}`);
-        return response.json() as Promise<{ placements?: WorldPlacement[] }>;
-      })
-      .then((payload) => setPlacements(Array.isArray(payload.placements) ? payload.placements : []))
-      .catch((error: unknown) => {
-        if (error instanceof DOMException && error.name === "AbortError") return;
-        setPlacements([]);
-      });
-    return () => controller.abort();
+        const payload = await response.json() as { placements?: WorldPlacement[] };
+        if (!disposed) setPlacements(Array.isArray(payload.placements) ? payload.placements : []);
+      } catch (error) {
+        if (!(error instanceof DOMException && error.name === "AbortError")) {
+          // Keep the last known-good world snapshot on transient refresh failures.
+        }
+      } finally {
+        if (activeController === controller) activeController = null;
+        refreshInFlight = false;
+      }
+    }
+
+    void refreshWorldPlacements();
+    const refreshTimer = window.setInterval(() => void refreshWorldPlacements(), UGC_WORLD_REFRESH_INTERVAL_MS);
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") void refreshWorldPlacements();
+    };
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
+    return () => {
+      disposed = true;
+      window.clearInterval(refreshTimer);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      activeController?.abort();
+    };
   }, []);
 
   async function interact(placement: WorldPlacement): Promise<void> {
