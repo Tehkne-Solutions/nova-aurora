@@ -74,6 +74,16 @@ function nextInteractiveState(current: AnimationState): AnimationState {
   return "activate";
 }
 
+function interactionVerb(current: AnimationState): string {
+  const next = nextInteractiveState(current);
+  if (next === "open") return "Abrir";
+  if (next === "close") return "Fechar";
+  if (next === "activate") return "Ativar";
+  if (next === "deactivate") return "Desativar";
+  if (next === "spin") return "Girar";
+  return "Parar";
+}
+
 export function CityWorld({ districts, currentLocationCode, visualLocationCode, busy, facing, timePhase, weather, reducedMotion, onMove }: Props) {
   const [placements, setPlacements] = useState<readonly WorldPlacement[]>([]);
   const [interactionBusyId, setInteractionBusyId] = useState<string | null>(null);
@@ -125,8 +135,9 @@ export function CityWorld({ districts, currentLocationCode, visualLocationCode, 
     if (busy || interactionBusyId || placement.locationCode !== currentLocationCode || placement.interactionScope !== "authenticated") return;
     const current = placement.animationState ?? "idle";
     const next = nextInteractiveState(current);
+    const verb = interactionVerb(current);
     setInteractionBusyId(placement.id);
-    setInteractionMessage(`Interagindo com ${placement.label}…`);
+    setInteractionMessage(`${verb} ${placement.label}…`);
     try {
       const response = await fetch(`${API_URL}/v1/ugc/world/placements/${placement.id}/interactions`, {
         method: "POST",
@@ -137,7 +148,7 @@ export function CityWorld({ districts, currentLocationCode, visualLocationCode, 
       const returnedState = payload.animationState;
       if (!response.ok || !returnedState) throw new Error(payload.message ?? `Interação UGC ${response.status}`);
       setPlacements((currentPlacements) => currentPlacements.map((item) => item.id === placement.id ? { ...item, animationState: returnedState } : item));
-      setInteractionMessage(`${placement.label}: interação concluída.`);
+      setInteractionMessage(`${placement.label}: ${verb.toLocaleLowerCase("pt-BR")} concluído.`);
     } catch (error) {
       setInteractionMessage(error instanceof Error ? error.message : "Não foi possível interagir com este objeto.");
     } finally {
@@ -166,11 +177,12 @@ export function CityWorld({ districts, currentLocationCode, visualLocationCode, 
         const placementStyle: CSSProperties = { ...position(location), transform: `translate(calc(-50% + ${placement.offsetX}px), calc(-50% + ${placement.offsetY}px)) scale(${placement.scalePercent / 100})` };
         const current = placement.locationCode === currentLocationCode;
         const interactive = current && isGlb && placement.interactionScope === "authenticated";
+        const verb = interactionVerb(placement.animationState ?? "idle");
         return (
           <figure aria-label={`Objeto criado por usuário: ${placement.label}`} className={`${styles.ugcWorldPlacement} ${isGlb ? styles.ugcWorldModel : ""} ${interactive ? styles.ugcWorldInteractive : ""}`} data-animation-state={placement.animationState ?? "idle"} data-current={current ? "true" : "false"} data-interaction-scope={placement.interactionScope ?? "owner_only"} data-render-mode={placement.renderMode} key={placement.id} style={placementStyle}>
             {isImage ? <img alt="" src={assetUrl} /> : <GlbPlacement animationState={placement.animationState} assetUrl={assetUrl} current={current} label={placement.label} rotationYDegrees={placement.rotationYDegrees} />}
             <figcaption>{placement.label}</figcaption>
-            {interactive ? <button className={styles.ugcInteractionButton} disabled={busy || interactionBusyId !== null} onClick={() => void interact(placement)} type="button">{interactionBusyId === placement.id ? "Interagindo…" : "Interagir"}</button> : null}
+            {interactive ? <button aria-label={`${verb} ${placement.label}`} className={styles.ugcInteractionButton} disabled={busy || interactionBusyId !== null} onClick={() => void interact(placement)} type="button">{interactionBusyId === placement.id ? `${verb}…` : verb}</button> : null}
           </figure>
         );
       })}
