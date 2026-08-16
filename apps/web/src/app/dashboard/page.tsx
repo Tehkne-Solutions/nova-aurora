@@ -7,7 +7,18 @@ import { RealtimeStatus } from "./realtime-status";
 const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
 
 type DashboardData = Readonly<{
-  state: null | { balances: readonly { code: string; value: string }[] };
+  state: null | {
+    balances: readonly { code: string; value: string }[];
+    inventory: readonly { code: string; quantity: string }[];
+    orders: readonly {
+      id: string;
+      side: "buy" | "sell";
+      item: string;
+      remaining_minor: string;
+      unit_price_minor: string;
+      status: string;
+    }[];
+  };
   book: null | {
     buys: readonly { id: string; remainingMinor: number; unitPriceMinor: number }[];
     sells: readonly { id: string; remainingMinor: number; unitPriceMinor: number }[];
@@ -16,9 +27,9 @@ type DashboardData = Readonly<{
   production: readonly { id: string; recipeCode: string; batches: number; status: string }[];
 }>;
 
-async function fetchJson(path: string, headers: HeadersInit = {}) {
+async function fetchJson(path: string) {
   try {
-    const response = await fetch(`${apiUrl}${path}`, { cache: "no-store", headers });
+    const response = await fetch(`${apiUrl}${path}`, { cache: "no-store" });
     return response.ok ? await response.json() : null;
   } catch {
     return null;
@@ -40,7 +51,7 @@ export default function Dashboard() {
       fetchJson("/v1/economy/snapshot"),
       fetchJson("/v1/market/order-book/bread"),
       fetchJson("/v1/market/trades/bread?limit=8"),
-      fetchJson("/v1/production/orders", { "x-actor-email": "alice@nova-aurora.local" })
+      fetchJson("/v1/production/orders")
     ]).then(([state, book, trades, production]) => {
       setData({
         state,
@@ -57,43 +68,81 @@ export default function Dashboard() {
   const production = data?.production ?? [];
 
   return (
-    <main>
+    <main aria-label="Painel econômico autenticado de Nova Aurora" data-authenticated="true">
       <p className="tag">MARKET & PRODUCTION CORE</p>
-      <h1>Nova Aurora em movimento.</h1>
+      <h1>Sua economia em Nova Aurora.</h1>
       <p className="lead">
-        Ordens são cruzadas por preço e prioridade temporal. Produções avançam em filas
-        temporizadas e publicam eventos econômicos em tempo real autenticado.
+        Seu saldo, inventário, ordens e produções convivem com o livro público de ofertas,
+        negociações da cidade e eventos econômicos em tempo real autenticado.
       </p>
       <nav className="rows">
         <Link href="/game">Cidade</Link>
-        <Link href="/municipality">Prefeitura</Link>
+        <Link href="/marketplace">Marketplace</Link>
+        <Link href="/business">Minha empresa</Link>
         <Link href="/account">Identidade e segurança</Link>
       </nav>
 
       {!data ? (
         <section>
-          <h2>Carregando economia autenticada…</h2>
+          <h2>Carregando sua economia autenticada…</h2>
         </section>
       ) : !state ? (
         <section>
-          <h2>Infraestrutura indisponível</h2>
-          <p>Suba PostgreSQL, Redis, API e worker para acompanhar a economia.</p>
+          <h2>Economia autenticada indisponível</h2>
+          <p>Não foi possível carregar o snapshot econômico da sua sessão.</p>
         </section>
       ) : (
         <>
           <section className="grid">
             {state.balances.map((balance) => (
               <article key={balance.code}>
-                <span>{balance.code}</span>
+                <span>Carteira</span>
                 <strong>{aurora(balance.value)}</strong>
               </article>
             ))}
+            <article>
+              <span>Tipos no inventário</span>
+              <strong>{state.inventory.length}</strong>
+            </article>
+            <article>
+              <span>Suas ordens registradas</span>
+              <strong>{state.orders.length}</strong>
+            </article>
             <RealtimeStatus />
           </section>
 
           <section className="split">
             <div>
-              <p className="tag">LIVRO DE OFERTAS · PÃO</p>
+              <p className="tag">SEU INVENTÁRIO</p>
+              <h2>Bens disponíveis</h2>
+              <div className="rows">
+                {state.inventory.map((item) => (
+                  <div className="row" key={item.code}>
+                    <span>{item.code}</span>
+                    <strong>{Number(item.quantity) / 100} un.</strong>
+                  </div>
+                ))}
+                {state.inventory.length === 0 && <p className="muted">Nenhum bem disponível.</p>}
+              </div>
+            </div>
+            <div>
+              <p className="tag">SUAS ORDENS</p>
+              <h2>Atividade de mercado</h2>
+              <div className="rows">
+                {state.orders.slice(0, 8).map((order) => (
+                  <div className="row" key={order.id}>
+                    <span>{order.side === "buy" ? "Compra" : "Venda"} · {order.item}</span>
+                    <strong>{order.status}</strong>
+                  </div>
+                ))}
+                {state.orders.length === 0 && <p className="muted">Nenhuma ordem registrada.</p>}
+              </div>
+            </div>
+          </section>
+
+          <section className="split">
+            <div>
+              <p className="tag">LIVRO PÚBLICO · PÃO</p>
               <h2>Compra</h2>
               <div className="rows">
                 {(book?.buys ?? []).slice(0, 6).map((order) => (
@@ -122,8 +171,8 @@ export default function Dashboard() {
 
           <section className="split">
             <div>
-              <p className="tag">NEGOCIAÇÕES</p>
-              <h2>Últimos trades</h2>
+              <p className="tag">NEGOCIAÇÕES PÚBLICAS</p>
+              <h2>Últimos trades de pão</h2>
               <div className="rows">
                 {trades.map((trade) => (
                   <div className="row" key={trade.id}>
@@ -135,7 +184,7 @@ export default function Dashboard() {
               </div>
             </div>
             <div>
-              <p className="tag">PRODUÇÃO TEMPORIZADA</p>
+              <p className="tag">SUA PRODUÇÃO TEMPORIZADA</p>
               <h2>Ordens da sessão atual</h2>
               <div className="rows">
                 {production.slice(0, 8).map((order) => (
@@ -155,3 +204,5 @@ export default function Dashboard() {
     </main>
   );
 }
+
+// Tehkné Solutions

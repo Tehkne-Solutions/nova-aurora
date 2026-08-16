@@ -12,7 +12,7 @@ import { registerComplianceRoutes } from "./compliance-routes.js";
 import { registerCityRoutes } from "./city-routes.js";
 import { registerEconomyAdminRoutes } from "./economy-admin-routes.js";
 import { registerEconomyAnomalyOwnershipRoutes } from "./economy-anomaly-ownership-routes.js";
-import { snapshot, verticalSlice } from "./economy.js";
+import { snapshot } from "./economy.js";
 import { registerGameplayRoutes } from "./gameplay-routes.js";
 import { registerMunicipalOperationsRoutes } from "./municipal-operations-routes.js";
 import { closeObservability, registerObservability } from "./observability.js";
@@ -185,9 +185,8 @@ app.get("/health", async () => ({
   signature: "Tehkné Solutions"
 }));
 
-app.get("/v1/economy/snapshot", async () => snapshot());
-app.post("/v1/tutorial/run", async (request) =>
-  verticalSlice(idempotencyKey(request))
+app.get("/v1/economy/snapshot", async (request) =>
+  snapshot(await requireActorId(app, request))
 );
 
 const marketOrderSchema = z.object({
