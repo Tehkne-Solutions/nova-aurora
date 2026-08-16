@@ -25,8 +25,10 @@ test("map exposes interaction only for authenticated GLB at current player locat
   assert.match(worldSource, /interactionScope\?: "owner_only" \| "authenticated"/);
   assert.match(worldSource, /const interactive = current && isGlb && placement\.interactionScope === "authenticated"/);
   assert.match(worldSource, /data-interaction-scope=\{placement\.interactionScope \?\? "owner_only"\}/);
+  assert.match(worldSource, /const verb = interactionVerb\(placement\.animationState \?\? "idle"\)/);
+  assert.match(worldSource, /aria-label=\{`\$\{verb\} \$\{placement\.label\}`\}/);
   assert.match(worldSource, /className=\{styles\.ugcInteractionButton\}/);
-  assert.match(worldSource, />\{interactionBusyId === placement\.id \? "Interagindo…" : "Interagir"\}<\/button>/);
+  assert.match(worldSource, />\{interactionBusyId === placement\.id \? `\$\{verb\}…` : verb\}<\/button>/);
 });
 
 test("player interaction posts canonical next state and immediately updates rendered state", () => {
