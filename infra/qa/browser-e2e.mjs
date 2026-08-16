@@ -247,6 +247,7 @@ for (const path of [
   "/beta-insights",
   "/business",
   "/marketplace",
+  "/dashboard",
   "/community",
   "/community/social",
   "/community/social/studio",
@@ -269,6 +270,14 @@ for (const path of [
       "Marketplace público"
     );
     report.economySurfaces = { ...(report.economySurfaces ?? {}), marketplace: { ready: true, text: state.text.slice(0, 240) } };
+  }
+  if (path === "/dashboard") {
+    await waitForHeading("h1", "Sua economia", "Dashboard econômico");
+    const state = await waitForAuthenticatedSurface(
+      "Painel econômico autenticado de Nova Aurora",
+      "Dashboard econômico"
+    );
+    report.economySurfaces = { ...(report.economySurfaces ?? {}), dashboard: { ready: true, text: state.text.slice(0, 240) } };
   }
   if (path === "/community/social") {
     await waitForHeading("h1", "Hub Social", "Hub Social");
@@ -331,14 +340,17 @@ for (const path of [
   }
 }
 
-// Aguarda efeitos, chamadas assíncronas e exceções tardias antes de congelar a evidência.
 await new Promise((resolve) => setTimeout(resolve, 1_000));
 const issues = report.pages.flatMap((page) => page.issues.map((issue) => `${page.path}: ${issue}`));
 const finalReport = { ...report, exceptions: [...exceptions], issues };
 await writeFile(reportFile, JSON.stringify(finalReport, null, 2));
 if (issues.length > 0) throw new Error(`Falhas de acessibilidade: ${issues.join("; ")}`);
 if (exceptions.length > 0) throw new Error(`Exceções no navegador: ${exceptions.join("; ")}`);
-if (!report.economySurfaces?.business?.ready || !report.economySurfaces?.marketplace?.ready) {
+if (
+  !report.economySurfaces?.business?.ready
+  || !report.economySurfaces?.marketplace?.ready
+  || !report.economySurfaces?.dashboard?.ready
+) {
   throw new Error("Superfícies econômicas autenticadas não produziram evidência completa.");
 }
 
@@ -363,5 +375,6 @@ console.log(JSON.stringify({
   ugcStudioReady: report.ugcStudio?.ready ?? false,
   authenticatedBusinessReady: report.economySurfaces?.business?.ready ?? false,
   authenticatedMarketplaceReady: report.economySurfaces?.marketplace?.ready ?? false,
+  authenticatedDashboardReady: report.economySurfaces?.dashboard?.ready ?? false,
   signature: "Tehkné Solutions"
 }));
