@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { MarketProductionConsole } from "./market-production-console";
 import { MarketplaceGame } from "./marketplace-game";
 import styles from "./marketplace.module.css";
 
@@ -12,7 +13,7 @@ export default function MarketplacePage() {
           <p className={styles.eyebrow}>NOVA AURORA · PUBLIC MARKETPLACE</p>
           <h1>Empresas abertas para clientes, talentos e participantes.</h1>
           <p>
-            Demanda regional, reputação, trabalho e participações internas
+            Demanda regional, reputação, trabalho, produção, bens e participações internas
             conectados ao mesmo ledger persistente da cidade.
           </p>
         </div>
@@ -24,7 +25,10 @@ export default function MarketplacePage() {
         </nav>
       </header>
       <MarketplaceGame />
+      <MarketProductionConsole />
       <footer className={styles.footer}>Tehkné Solutions</footer>
     </main>
   );
 }
+
+// Tehkné Solutions
