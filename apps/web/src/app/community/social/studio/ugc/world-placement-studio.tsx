@@ -6,7 +6,9 @@ import styles from "../../social.module.css";
 
 const API_URL = (process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000").replace(/\/$/, "");
 const ANIMATION_STATES = ["idle", "open", "close", "activate", "deactivate", "spin"] as const;
+const INTERACTION_SCOPES = ["owner_only", "authenticated"] as const;
 type AnimationState = typeof ANIMATION_STATES[number];
+type InteractionScope = typeof INTERACTION_SCOPES[number];
 
 const ANIMATION_LABELS: Record<AnimationState, string> = {
   idle: "Idle",
@@ -15,6 +17,11 @@ const ANIMATION_LABELS: Record<AnimationState, string> = {
   activate: "Ativar",
   deactivate: "Desativar",
   spin: "Girar"
+};
+
+const INTERACTION_LABELS: Record<InteractionScope, string> = {
+  owner_only: "Somente criador",
+  authenticated: "Usuários autenticados · opt-in"
 };
 
 type RenderableAsset = Readonly<{
@@ -45,6 +52,7 @@ type Placement = Readonly<{
   scalePercent: number;
   rotationYDegrees: number;
   animationState?: AnimationState;
+  interactionScope?: InteractionScope;
   contentType: string;
   renderMode: "image-billboard-v1" | "glb-model-v1";
   assetPath: string | null;
@@ -92,6 +100,7 @@ export function WorldPlacementStudio() {
   const [scalePercent, setScalePercent] = useState("100");
   const [rotationYDegrees, setRotationYDegrees] = useState("0");
   const [animationState, setAnimationState] = useState<AnimationState>("idle");
+  const [interactionScope, setInteractionScope] = useState<InteractionScope>("owner_only");
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
@@ -103,7 +112,7 @@ export function WorldPlacementStudio() {
       const [assetResponse, locationResponse, placementResponse] = await Promise.all([
         apiJson<{ assets: RenderableAsset[] }>("/v1/ugc/assets/library/me?status=clean&limit=100"),
         apiJson<{ locations: LocationOption[] }>("/v1/ugc/world/locations"),
-        apiJson<{ placements: Placement[]; animationStates?: readonly AnimationState[] }>("/v1/ugc/world/placements/me")
+        apiJson<{ placements: Placement[]; animationStates?: readonly AnimationState[]; interactionScopes?: readonly InteractionScope[]; visitorMutationEnabled?: boolean }>("/v1/ugc/world/placements/me")
       ]);
       const renderableAssets = assetResponse.assets.filter(renderable);
       setAssets(renderableAssets);
@@ -156,12 +165,13 @@ export function WorldPlacementStudio() {
           offsetY: parsedOffsetY,
           scalePercent: parsedScale,
           rotationYDegrees: selectedIsGlb ? parsedRotation : 0,
-          animationState: selectedIsGlb ? animationState : "idle"
+          animationState: selectedIsGlb ? animationState : "idle",
+          interactionScope: selectedIsGlb ? interactionScope : "owner_only"
         })
       });
       setNotice(selectedIsGlb
-        ? `Modelo 3D instalado em estado ${ANIMATION_LABELS[animationState]}. O /game usa o mesmo runtime de clips.`
-        : "Objeto instalado. O /game já pode renderizá-lo como billboard.");
+        ? `Modelo 3D instalado em ${ANIMATION_LABELS[animationState]} · permissão ${INTERACTION_LABELS[interactionScope]}. Ação de visitante ainda permanece desabilitada nesta etapa.`
+        : "Objeto instalado. Imagens permanecem sem transições de interação.");
       setLabel("");
       await load();
     } catch (createError) {
@@ -191,6 +201,26 @@ export function WorldPlacementStudio() {
     }
   }
 
+  async function updateInteractionScope(placementId: string, nextScope: InteractionScope) {
+    setBusy(true);
+    setError(null);
+    try {
+      const response = await apiJson<{ placementId: string; interactionScope: InteractionScope; visitorMutationEnabled: false }>(`/v1/ugc/world/placements/${placementId}/interaction-scope`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ interactionScope: nextScope })
+      });
+      setPlacements((current) => current.map((placement) => placement.id === response.placementId
+        ? { ...placement, interactionScope: response.interactionScope }
+        : placement));
+      setNotice(`Permissão declarada: ${INTERACTION_LABELS[response.interactionScope]}. Ação de visitante continua desabilitada até o gate próprio.`);
+    } catch (scopeError) {
+      setError(scopeError instanceof Error ? scopeError.message : "Não foi possível alterar a permissão de interação.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function removePlacement(placementId: string) {
     setBusy(true);
     setError(null);
@@ -214,7 +244,7 @@ export function WorldPlacementStudio() {
       <div className={styles.sectionHeader}>
         <div>
           <h3 id="ugc-world-placement-title">Objetos UGC no mundo</h3>
-          <p>Instale imagens ou modelos GLB verificados nos locais da cidade. Modelos 3D podem receber estados persistentes de comportamento; somente o criador controla essas transições nesta etapa.</p>
+          <p>Instale imagens ou modelos GLB verificados. O criador controla estado e permissão. `authenticated` é apenas opt-in persistido nesta sprint: nenhum visitante recebe mutação até o gate de interação pública.</p>
         </div>
         <button className={styles.buttonQuiet} type="button" disabled={busy} onClick={() => void load()}>Atualizar</button>
       </div>
@@ -235,6 +265,7 @@ export function WorldPlacementStudio() {
                 if (next?.contentType !== "model/gltf-binary") {
                   setRotationYDegrees("0");
                   setAnimationState("idle");
+                  setInteractionScope("owner_only");
                 }
               }}>
                 {assets.map((asset) => <option key={asset.id} value={asset.id}>{asset.contentType === "model/gltf-binary" ? "3D · " : "IMG · "}{asset.fileName}</option>)}
@@ -271,6 +302,11 @@ export function WorldPlacementStudio() {
                   <select id="ugc-world-animation-state" className={styles.select} value={animationState} onChange={(event) => setAnimationState(event.target.value as AnimationState)}>
                     {ANIMATION_STATES.map((state) => <option key={state} value={state}>{ANIMATION_LABELS[state]}</option>)}
                   </select>
+                  <label htmlFor="ugc-world-interaction-scope">Permissão de interação</label>
+                  <select id="ugc-world-interaction-scope" className={styles.select} value={interactionScope} onChange={(event) => setInteractionScope(event.target.value as InteractionScope)}>
+                    {INTERACTION_SCOPES.map((scope) => <option key={scope} value={scope}>{INTERACTION_LABELS[scope]}</option>)}
+                  </select>
+                  <p>O modo autenticado apenas registra seu opt-in. A ação de visitante permanece desligada até a sprint de interação pública.</p>
                 </>
               ) : null}
 
@@ -292,11 +328,12 @@ export function WorldPlacementStudio() {
                 const reference = assetReference(placement);
                 const isGlb = placement.renderMode === "glb-model-v1";
                 const currentState = placement.animationState ?? "idle";
+                const currentScope = placement.interactionScope ?? "owner_only";
                 return (
                   <article className={styles.activity} key={placement.id}>
                     <div>
                       <h4>{placement.label}</h4>
-                      <p>{placement.locationName ?? placement.locationCode} · {isGlb ? "GLB 3D" : "billboard"} · x {placement.offsetX}px · y {placement.offsetY}px · escala {placement.scalePercent}%{isGlb ? ` · rotação ${placement.rotationYDegrees}° · estado ${ANIMATION_LABELS[currentState]}` : ""}</p>
+                      <p>{placement.locationName ?? placement.locationCode} · {isGlb ? "GLB 3D" : "billboard"} · x {placement.offsetX}px · y {placement.offsetY}px · escala {placement.scalePercent}%{isGlb ? ` · rotação ${placement.rotationYDegrees}° · estado ${ANIMATION_LABELS[currentState]} · interação ${INTERACTION_LABELS[currentScope]}` : ""}</p>
                       {reference ? (
                         isGlb
                           ? <GlbPlacement animationState={currentState} assetUrl={reference} label={placement.label} rotationYDegrees={placement.rotationYDegrees} />
@@ -314,6 +351,17 @@ export function WorldPlacementStudio() {
                           >
                             {ANIMATION_STATES.map((state) => <option key={state} value={state}>{ANIMATION_LABELS[state]}</option>)}
                           </select>
+                          <label htmlFor={`ugc-world-scope-${placement.id}`}>Quem poderá interagir</label>
+                          <select
+                            id={`ugc-world-scope-${placement.id}`}
+                            className={styles.select}
+                            disabled={busy}
+                            value={currentScope}
+                            onChange={(event) => void updateInteractionScope(placement.id, event.target.value as InteractionScope)}
+                          >
+                            {INTERACTION_SCOPES.map((scope) => <option key={scope} value={scope}>{INTERACTION_LABELS[scope]}</option>)}
+                          </select>
+                          {currentScope === "authenticated" ? <p>Acesso autenticado foi autorizado pelo criador; mutação de visitante ainda não está habilitada nesta sprint.</p> : null}
                         </div>
                       ) : null}
                     </div>

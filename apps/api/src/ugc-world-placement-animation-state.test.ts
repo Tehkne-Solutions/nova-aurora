@@ -20,7 +20,7 @@ test("placement API validates, persists, selects and serializes animationState",
   assert.match(routeSource, /const ANIMATION_STATES = \["idle", "open", "close", "activate", "deactivate", "spin"\] as const/);
   assert.match(routeSource, /animationState: z\.enum\(ANIMATION_STATES\)\.default\("idle"\)/);
   assert.match(routeSource, /placement\.rotation_y_degrees,placement\.animation_state/);
-  assert.match(routeSource, /rotation_y_degrees,animation_state,status/);
+  assert.match(routeSource, /rotation_y_degrees,animation_state,interaction_scope,status/);
   assert.match(routeSource, /\$\{body\.animationState\}/);
   assert.match(routeSource, /animationState: normalizeAnimationState\(row\.animation_state\)/);
   assert.match(routeSource, /animationState: normalizeAnimationState\(result\.row\.animation_state\)/);
