@@ -20,12 +20,12 @@ export type ObjectAnimationPlaybackPolicy = Readonly<{
 }>;
 
 const POLICIES: Readonly<Record<ObjectAnimationState, ObjectAnimationPlaybackPolicy>> = Object.freeze({
-  idle: Object.freeze({ state: "idle", selector: Object.freeze({ name: "Idle" }), loop: true }),
-  open: Object.freeze({ state: "open", selector: Object.freeze({ name: "Open" }), loop: false }),
-  close: Object.freeze({ state: "close", selector: Object.freeze({ name: "Close" }), loop: false }),
-  activate: Object.freeze({ state: "activate", selector: Object.freeze({ name: "Activate" }), loop: false }),
-  deactivate: Object.freeze({ state: "deactivate", selector: Object.freeze({ name: "Deactivate" }), loop: false }),
-  spin: Object.freeze({ state: "spin", selector: Object.freeze({ name: "Spin" }), loop: true })
+  idle: Object.freeze({ state: "idle", selector: "Idle", loop: true }),
+  open: Object.freeze({ state: "open", selector: "Open", loop: false }),
+  close: Object.freeze({ state: "close", selector: "Close", loop: false }),
+  activate: Object.freeze({ state: "activate", selector: "Activate", loop: false }),
+  deactivate: Object.freeze({ state: "deactivate", selector: "Deactivate", loop: false }),
+  spin: Object.freeze({ state: "spin", selector: "Spin", loop: true })
 });
 
 export function animationPlaybackForObjectState(state: ObjectAnimationState): ObjectAnimationPlaybackPolicy {
