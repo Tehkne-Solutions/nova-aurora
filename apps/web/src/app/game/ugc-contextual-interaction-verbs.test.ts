@@ -15,8 +15,9 @@ test("UGC interaction verbs reflect the canonical next state", () => {
 
 test("UGC action button and accessible label use the same contextual verb", () => {
   assert.match(cityWorld, /const verb = interactionVerb\(placement\.animationState \?\? "idle"\)/);
-  assert.match(cityWorld, /aria-label=\{`\$\{verb\} \$\{placement\.label\}`\}/);
-  assert.match(cityWorld, /interactionBusyId === placement\.id \? `\$\{verb\}…` : verb/);
+  assert.match(cityWorld, /const interactionLabel = coolingDown \? `Aguarde \$\{cooldownRemainingSeconds\}s para \$\{verb\.toLocaleLowerCase\("pt-BR"\)\} \$\{placement\.label\}` : `\$\{verb\} \$\{placement\.label\}`/);
+  assert.match(cityWorld, /aria-label=\{interactionLabel\}/);
+  assert.match(cityWorld, /interactionBusyId === placement\.id \? `\$\{verb\}…` : coolingDown \? `Aguarde \$\{cooldownRemainingSeconds\}s` : verb/);
 });
 
 test("UGC interaction request preserves the existing canonical state transition contract", () => {
