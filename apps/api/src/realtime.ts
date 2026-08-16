@@ -7,7 +7,7 @@ import { authSecurity } from "./auth-context.js";
 const REALTIME_CHANNEL = "nova-aurora.events";
 const REALTIME_PUBLISH_CONNECT_TIMEOUT_MS = 1_000;
 
-type LiveSocket = Readonly<{
+type LiveSocket = {
   socket: {
     readyState: number;
     send(payload: string): void;
@@ -16,6 +16,12 @@ type LiveSocket = Readonly<{
     on(event: "message", listener: (data: unknown) => void): void;
   };
   identity: AuthenticatedIdentity;
+  locationCode: string | null;
+};
+
+type RealtimeRoute = Readonly<{
+  eventType: string | null;
+  locationCode: string | null;
 }>;
 
 let publisher: Redis | null = null;
@@ -68,6 +74,25 @@ function audienceUserId(payload: string): string | null {
   }
 }
 
+function realtimeRoute(payload: string): RealtimeRoute {
+  try {
+    const value = JSON.parse(payload) as {
+      eventType?: unknown;
+      locationCode?: unknown;
+      payload?: { locationCode?: unknown };
+    };
+    const locationCode = value.locationCode ?? value.payload?.locationCode;
+    return {
+      eventType: typeof value.eventType === "string" ? value.eventType : null,
+      locationCode: typeof locationCode === "string" && locationCode.trim()
+        ? locationCode.trim().slice(0, 80)
+        : null
+    };
+  } catch {
+    return { eventType: null, locationCode: null };
+  }
+}
+
 export async function registerRealtime(app: FastifyInstance): Promise<void> {
   await app.register(websocket);
   const sockets = new Set<LiveSocket>();
@@ -88,7 +113,7 @@ export async function registerRealtime(app: FastifyInstance): Promise<void> {
       return;
     }
 
-    const connection: LiveSocket = { socket, identity };
+    const connection: LiveSocket = { socket, identity, locationCode: null };
     sockets.add(connection);
     await authSecurity.heartbeat({ identity, status: "online" });
     socket.send(JSON.stringify({
@@ -115,12 +140,14 @@ export async function registerRealtime(app: FastifyInstance): Promise<void> {
           const status = message.status === "away" || message.status === "busy"
             ? message.status
             : "online";
+          const locationCode = typeof message.locationCode === "string"
+            ? message.locationCode.trim().slice(0, 80)
+            : "";
+          if (locationCode) connection.locationCode = locationCode;
           const presence = await authSecurity.heartbeat({
             identity,
             status,
-            ...(typeof message.locationCode === "string"
-              ? { locationCode: message.locationCode.slice(0, 80) }
-              : {})
+            ...(locationCode ? { locationCode } : {})
           });
           socket.send(JSON.stringify({
             eventType: "presence.updated",
@@ -157,8 +184,15 @@ export async function registerRealtime(app: FastifyInstance): Promise<void> {
     await subscriber.subscribe(REALTIME_CHANNEL);
     subscriber.on("message", (_channel: string, payload: string) => {
       const audience = audienceUserId(payload);
+      const route = realtimeRoute(payload);
       for (const connection of sockets) {
         if (audience && audience !== connection.identity.userId) continue;
+        if (
+          !audience
+          && route.eventType === "ugc.world.placement.updated"
+          && route.locationCode
+          && connection.locationCode !== route.locationCode
+        ) continue;
         if (connection.socket.readyState === 1) connection.socket.send(payload);
       }
     });
@@ -174,3 +208,5 @@ export async function registerRealtime(app: FastifyInstance): Promise<void> {
     publisher = null;
   });
 }
+
+// Tehkné Solutions
