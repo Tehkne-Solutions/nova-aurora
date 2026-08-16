@@ -22,10 +22,11 @@ test("legacy vertical slice is no longer exposed as a public HTTP mutation", () 
   assert.match(economySource, /export async function verticalSlice\(key:string\)/);
 });
 
-test("snapshot queries only the authenticated owner's accounts, inventory and market orders", () => {
+test("snapshot queries only the authenticated owner's balances, inventory and market orders", () => {
   assert.ok(snapshotStart >= 0 && verticalSliceStart > snapshotStart);
   assert.match(snapshotSource, /snapshot\(ownerId: string\)/);
-  assert.match(snapshotSource, /WHERE a\.owner_id=\$\{ownerId\}::uuid/);
+  assert.match(snapshotSource, /FROM ledger_account_balances/);
+  assert.match(snapshotSource, /WHERE owner_id=\$\{ownerId\}::uuid/);
   assert.match(snapshotSource, /WHERE l\.owner_id=\$\{ownerId\}::uuid/);
   assert.match(snapshotSource, /WHERE o\.owner_id=\$\{ownerId\}::uuid/);
   assert.doesNotMatch(snapshotSource, /JOIN users/);
