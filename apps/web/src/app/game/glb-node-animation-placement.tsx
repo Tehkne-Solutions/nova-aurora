@@ -22,6 +22,7 @@ type Props = Readonly<{
   label: string;
   rotationYDegrees?: number;
   current?: boolean;
+  playbackLoop?: boolean;
 }>;
 
 type GpuDrawable = Readonly<{
@@ -453,7 +454,8 @@ async function renderNodeAnimatedPbr(
   pbrModel: AlphaBlendPbrModel,
   animationModel: NodeAnimationRuntimeModel,
   normalization: AnimationNormalization,
-  rotationDegrees: number
+  rotationDegrees: number,
+  playbackLoop: boolean
 ): Promise<() => void> {
   if (animationModel.primitives.length !== pbrModel.drawables.length) throw new Error("Primitive order divergiu entre PBR e animation runtime.");
   const gl = canvas.getContext("webgl", { alpha: true, antialias: true, premultipliedAlpha: false }) as WebGLRenderingContext | null;
@@ -469,11 +471,13 @@ async function renderNodeAnimatedPbr(
   const lightDirection = new Float32Array(normalize([0.48, 0.82, 0.52]));
   const cameraPosition = new Float32Array(camera);
   const hasAnimation = animationModel.clips.length > 0 && animationModel.clips[0]!.durationSeconds > 0;
+  const animationDurationSeconds = hasAnimation ? animationModel.clips[0]!.durationSeconds : 0;
   let accumulatedVisibleMs = 0;
   let visibleStartMs: number | null = null;
   let frameId: number | null = null;
   let visible = true;
   let disposed = false;
+  let completed = false;
 
   const elapsedSeconds = (timestamp: number): number => (accumulatedVisibleMs + (visibleStartMs === null ? 0 : Math.max(0, timestamp - visibleStartMs))) / 1000;
   const modelForResource = (resource: GpuDrawable, worlds: readonly Mat4[]): Mat4 => {
@@ -504,7 +508,9 @@ async function renderNodeAnimatedPbr(
     gl.uniformMatrix4fv(bindings.viewProjectionLocation, false, new Float32Array(multiply4(perspective(Math.PI / 4.2, width / height, 0.1, 20), view)));
     gl.uniform3fv(bindings.lightLocation, lightDirection); gl.uniform3fv(bindings.cameraLocation, cameraPosition);
     gl.uniform1i(bindings.baseTextureLocation, 0); gl.uniform1i(bindings.mrTextureLocation, 1); gl.uniform1i(bindings.occlusionTextureLocation, 2); gl.uniform1i(bindings.emissiveTextureLocation, 3); gl.uniform1i(bindings.normalTextureLocation, 4);
-    const worlds = hasAnimation ? sampleCertifiedNodeWorldMatrices(animationModel, 0, elapsedSeconds(timestamp), true) : sampleCertifiedNodeWorldMatrices(animationModel, -1, 0, false);
+    const elapsed = elapsedSeconds(timestamp);
+    const worlds = hasAnimation ? sampleCertifiedNodeWorldMatrices(animationModel, 0, elapsed, playbackLoop) : sampleCertifiedNodeWorldMatrices(animationModel, -1, 0, false);
+    if (hasAnimation && !playbackLoop && elapsed >= animationDurationSeconds) completed = true;
     const solid: Readonly<{ resource: GpuDrawable; model: Mat4 }>[] = [];
     const transparent: { resource: GpuDrawable; model: Mat4; depth: number }[] = [];
     for (const resource of resources) {
@@ -525,6 +531,7 @@ async function renderNodeAnimatedPbr(
 
   const schedule = (): void => {
     if (!hasAnimation || !visible || disposed || frameId !== null) return;
+    if (completed) return;
     frameId = requestAnimationFrame((timestamp) => {
       frameId = null;
       draw(timestamp);
@@ -537,6 +544,7 @@ async function renderNodeAnimatedPbr(
   };
   const resume = (): void => {
     if (!hasAnimation || disposed) return;
+    if (completed) return;
     if (visibleStartMs === null) visibleStartMs = performance.now();
     schedule();
   };
@@ -578,7 +586,7 @@ function materialState(model: AlphaBlendPbrModel): string {
   return "numeric-pbr";
 }
 
-export function GlbPlacement({ assetUrl, label, rotationYDegrees = 0, current = false }: Props) {
+export function GlbPlacement({ assetUrl, label, rotationYDegrees = 0, current = false, playbackLoop = true }: Props) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const [state, setState] = useState<"loading" | "ready" | "error">("loading");
   const [error, setError] = useState<string | null>(null);
@@ -603,11 +611,11 @@ export function GlbPlacement({ assetUrl, label, rotationYDegrees = 0, current = 
         const pbrModel = parseAlphaBlendPbrGlb(buffer);
         const animationModel = parseCertifiedNodeAnimationRuntime(buffer);
         const normalization = computeAnimationNormalization(buffer, animationModel);
-        const cleanup = await renderNodeAnimatedPbr(canvas, pbrModel, animationModel, normalization, rotationYDegrees);
+        const cleanup = await renderNodeAnimatedPbr(canvas, pbrModel, animationModel, normalization, rotationYDegrees, playbackLoop);
         if (controller.signal.aborted) { cleanup(); return; }
         dispose = cleanup;
         setMaterial(materialState(pbrModel));
-        setAnimation(animationModel.clips.length > 0 ? "animated" : "static");
+        setAnimation(animationModel.clips.length > 0 ? (playbackLoop ? "animated-loop" : "animated-one-shot-hold") : "static");
         setState("ready");
       })
       .catch((cause: unknown) => {
@@ -616,7 +624,7 @@ export function GlbPlacement({ assetUrl, label, rotationYDegrees = 0, current = 
         setState("error");
       });
     return () => { controller.abort(); dispose?.(); };
-  }, [assetUrl, rotationYDegrees]);
+  }, [assetUrl, rotationYDegrees, playbackLoop]);
 
   return (
     <div
@@ -626,6 +634,7 @@ export function GlbPlacement({ assetUrl, label, rotationYDegrees = 0, current = 
       data-glb-renderer="first-party-webgl-pbr-node-animation-v10"
       data-material-state={material}
       data-animation-state={animation}
+      data-playback-loop={playbackLoop ? "true" : "false"}
       role="img"
       title={state === "error" ? `${label}: ${error ?? "modelo não suportado"}` : `${label} · PBR + node animation`}
     >

@@ -11,7 +11,9 @@ test("canonical GLB entrypoint routes through persisted-state adapter before v10
   assert.doesNotMatch(entrypoint, /from "\.\/glb-node-animation-placement"/);
   assert.match(statefulPlacement, /prepareGlbForAnimationState\(buffer, normalizedState\)/);
   assert.match(statefulPlacement, /GlbPlacement as CertifiedGlbPlacement/);
-  assert.match(statefulPlacement, /data-glb-state-adapter="persisted-state-clip-v1"/);
+  assert.match(statefulPlacement, /data-glb-state-adapter="persisted-state-clip-v2"/);
+  assert.match(statefulPlacement, /animationPlaybackForObjectState\(normalizedState\)/);
+  assert.match(statefulPlacement, /playbackLoop=\{playbackPolicy\.loop\}/);
 });
 
 test("CityWorld transports persisted animationState into the canonical GLB placement", () => {
