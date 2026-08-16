@@ -8,9 +8,11 @@ const economySql = db();
 const IMAGE_CONTENT_TYPES = ["image/png", "image/jpeg", "image/webp"] as const;
 const GLB_CONTENT_TYPE = "model/gltf-binary" as const;
 const RENDERABLE_CONTENT_TYPES = [...IMAGE_CONTENT_TYPES, GLB_CONTENT_TYPE] as const;
+const ANIMATION_STATES = ["idle", "open", "close", "activate", "deactivate", "spin"] as const;
 
 type RenderableContentType = typeof RENDERABLE_CONTENT_TYPES[number];
 type RenderMode = "image-billboard-v1" | "glb-model-v1";
+type AnimationState = typeof ANIMATION_STATES[number];
 
 const placementQuerySchema = z.object({
   locationCode: z.string().trim().min(1).max(64).optional(),
@@ -24,7 +26,8 @@ const createPlacementSchema = z.object({
   offsetX: z.number().int().min(-120).max(120).default(0),
   offsetY: z.number().int().min(-140).max(80).default(-70),
   scalePercent: z.number().int().min(50).max(180).default(100),
-  rotationYDegrees: z.number().int().min(0).max(359).default(0)
+  rotationYDegrees: z.number().int().min(0).max(359).default(0),
+  animationState: z.enum(ANIMATION_STATES).default("idle")
 });
 
 function assetPath(assetId: string): string {
@@ -44,6 +47,10 @@ function isRenderableContentType(value: string): value is RenderableContentType 
   return RENDERABLE_CONTENT_TYPES.includes(value as RenderableContentType);
 }
 
+function normalizeAnimationState(value: unknown): AnimationState {
+  return ANIMATION_STATES.includes(value as AnimationState) ? value as AnimationState : "idle";
+}
+
 function serializePlacement(row: Record<string, unknown>) {
   const assetId = String(row.asset_upload_id);
   const contentType = String(row.content_type);
@@ -58,6 +65,7 @@ function serializePlacement(row: Record<string, unknown>) {
     offsetY: Number(row.offset_y),
     scalePercent: Number(row.scale_percent),
     rotationYDegrees: Number(row.rotation_y_degrees ?? 0),
+    animationState: normalizeAnimationState(row.animation_state),
     contentType,
     renderMode: renderMode(contentType),
     fileName: String(row.file_name),
@@ -95,7 +103,7 @@ export async function registerUgcWorldPlacementRoutes(app: FastifyInstance): Pro
     const rows = await economySql`
       SELECT placement.id,placement.owner_user_id,placement.asset_upload_id,
         placement.label,placement.offset_x,placement.offset_y,placement.scale_percent,
-        placement.rotation_y_degrees,placement.created_at,placement.updated_at,
+        placement.rotation_y_degrees,placement.animation_state,placement.created_at,placement.updated_at,
         location.code location_code,location.name location_name,
         asset.file_name,asset.content_type,asset.verified_sha256
       FROM ugc_world_placements placement
@@ -113,6 +121,7 @@ export async function registerUgcWorldPlacementRoutes(app: FastifyInstance): Pro
       filter: { locationCode: query.locationCode ?? null, limit: query.limit },
       renderMode: "image-billboard-v1" as const,
       renderModes: ["image-billboard-v1", "glb-model-v1"] as const,
+      animationStates: ANIMATION_STATES,
       signature: "Tehkné Solutions"
     };
   });
@@ -122,7 +131,7 @@ export async function registerUgcWorldPlacementRoutes(app: FastifyInstance): Pro
     const rows = await economySql`
       SELECT placement.id,placement.owner_user_id,placement.asset_upload_id,
         placement.label,placement.offset_x,placement.offset_y,placement.scale_percent,
-        placement.rotation_y_degrees,placement.created_at,placement.updated_at,
+        placement.rotation_y_degrees,placement.animation_state,placement.created_at,placement.updated_at,
         location.code location_code,location.name location_name,
         asset.file_name,asset.content_type,asset.verified_sha256
       FROM ugc_world_placements placement
@@ -135,7 +144,7 @@ export async function registerUgcWorldPlacementRoutes(app: FastifyInstance): Pro
       ORDER BY placement.created_at DESC,placement.id DESC
       LIMIT 200
     `;
-    return { placements: rows.map((row) => serializePlacement(row)), signature: "Tehkné Solutions" };
+    return { placements: rows.map((row) => serializePlacement(row)), animationStates: ANIMATION_STATES, signature: "Tehkné Solutions" };
   });
 
   app.post("/v1/ugc/world/placements", async (request) => {
@@ -181,13 +190,13 @@ export async function registerUgcWorldPlacementRoutes(app: FastifyInstance): Pro
       const row = (await tx`
         INSERT INTO ugc_world_placements (
           id,owner_user_id,asset_upload_id,location_id,label,
-          offset_x,offset_y,scale_percent,rotation_y_degrees,status
+          offset_x,offset_y,scale_percent,rotation_y_degrees,animation_state,status
         ) VALUES (
           ${placementId}::uuid,${actor.userId}::uuid,${body.assetId}::uuid,${String(location.id)}::uuid,
-          ${body.label},${body.offsetX},${body.offsetY},${body.scalePercent},${body.rotationYDegrees},'active'
+          ${body.label},${body.offsetX},${body.offsetY},${body.scalePercent},${body.rotationYDegrees},${body.animationState},'active'
         )
         RETURNING id,owner_user_id,asset_upload_id,label,offset_x,offset_y,scale_percent,
-          rotation_y_degrees,created_at,updated_at
+          rotation_y_degrees,animation_state,created_at,updated_at
       `)[0]!;
       return { row, contentType, fileName: String(asset.file_name), sha256: String(asset.verified_sha256) };
     });
@@ -203,6 +212,7 @@ export async function registerUgcWorldPlacementRoutes(app: FastifyInstance): Pro
         offsetY: Number(result.row.offset_y),
         scalePercent: Number(result.row.scale_percent),
         rotationYDegrees: Number(result.row.rotation_y_degrees),
+        animationState: normalizeAnimationState(result.row.animation_state),
         contentType: result.contentType,
         renderMode: renderMode(result.contentType),
         fileName: result.fileName,
@@ -212,6 +222,7 @@ export async function registerUgcWorldPlacementRoutes(app: FastifyInstance): Pro
         createdAt: new Date(String(result.row.created_at)).toISOString(),
         updatedAt: new Date(String(result.row.updated_at)).toISOString()
       },
+      animationStates: ANIMATION_STATES,
       signature: "Tehkné Solutions"
     };
   });
