@@ -3,6 +3,7 @@ import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { db } from "@nova-aurora/database";
 import { requireActor } from "./auth-context.js";
+import { publishRealtimeEvent } from "./realtime.js";
 
 const economySql = db();
 const ANIMATION_STATES = ["idle", "open", "close", "activate", "deactivate", "spin"] as const;
@@ -28,7 +29,7 @@ export async function registerUgcWorldInteractionRoutes(app: FastifyInstance): P
 
     const result = await economySql.begin("isolation level serializable", async (tx) => {
       const placement = (await tx`
-        SELECT placement.id,placement.owner_user_id,placement.animation_state,placement.interaction_scope,
+        SELECT placement.id,placement.owner_user_id,placement.location_code,placement.animation_state,placement.interaction_scope,
           placement.status,asset.status asset_status,asset.content_type
         FROM ugc_world_placements placement
         JOIN ugc_binary_asset_upload_sessions asset ON asset.id=placement.asset_upload_id
@@ -79,6 +80,7 @@ export async function registerUgcWorldInteractionRoutes(app: FastifyInstance): P
 
       return {
         cooldownBlocked: false as const,
+        locationCode: String(placement.location_code),
         previousState,
         animationState: normalizeAnimationState(updated.animation_state),
         updatedAt: new Date(String(updated.updated_at)).toISOString()
@@ -98,6 +100,22 @@ export async function registerUgcWorldInteractionRoutes(app: FastifyInstance): P
         signature: "Tehkné Solutions"
       });
     }
+
+    void publishRealtimeEvent({
+      eventType: "ugc.world.placement.updated",
+      payload: {
+        interactionId,
+        placementId,
+        locationCode: result.locationCode,
+        previousAnimationState: result.previousState,
+        animationState: result.animationState,
+        updatedAt: result.updatedAt
+      }
+    }).then((published) => {
+      if (!published) {
+        app.log.warn({ interactionId, placementId }, "ugc.realtime.publish.unavailable");
+      }
+    });
 
     return {
       interactionId,

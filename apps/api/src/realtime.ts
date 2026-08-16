@@ -4,6 +4,9 @@ import { Redis } from "ioredis";
 import type { AuthenticatedIdentity } from "@nova-aurora/database";
 import { authSecurity } from "./auth-context.js";
 
+const REALTIME_CHANNEL = "nova-aurora.events";
+const REALTIME_PUBLISH_CONNECT_TIMEOUT_MS = 1_000;
+
 type LiveSocket = Readonly<{
   socket: {
     readyState: number;
@@ -14,6 +17,43 @@ type LiveSocket = Readonly<{
   };
   identity: AuthenticatedIdentity;
 }>;
+
+let publisher: Redis | null = null;
+
+function realtimePublisher(): Redis {
+  if (!publisher || publisher.status === "end") {
+    publisher = new Redis(
+      process.env.REDIS_URL ?? "redis://localhost:6379",
+      {
+        lazyConnect: true,
+        connectTimeout: REALTIME_PUBLISH_CONNECT_TIMEOUT_MS,
+        enableOfflineQueue: false,
+        maxRetriesPerRequest: 1,
+        retryStrategy: () => null
+      }
+    );
+    publisher.on("error", () => {
+      // Publishing is best-effort. Durable state remains authoritative in Postgres.
+    });
+  }
+  return publisher;
+}
+
+export async function publishRealtimeEvent(payload: Readonly<Record<string, unknown>>): Promise<boolean> {
+  try {
+    const client = realtimePublisher();
+    if (client.status === "wait") await client.connect();
+    if (client.status !== "ready") return false;
+    await client.publish(REALTIME_CHANNEL, JSON.stringify({
+      ...payload,
+      occurredAt: new Date().toISOString(),
+      signature: "Tehkné Solutions"
+    }));
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 function audienceUserId(payload: string): string | null {
   try {
@@ -114,7 +154,7 @@ export async function registerRealtime(app: FastifyInstance): Promise<void> {
 
   try {
     await subscriber.connect();
-    await subscriber.subscribe("nova-aurora.events");
+    await subscriber.subscribe(REALTIME_CHANNEL);
     subscriber.on("message", (_channel: string, payload: string) => {
       const audience = audienceUserId(payload);
       for (const connection of sockets) {
@@ -125,4 +165,12 @@ export async function registerRealtime(app: FastifyInstance): Promise<void> {
   } catch (error) {
     app.log.warn({ error }, "Realtime Redis indisponível; API permanece operacional.");
   }
+
+  app.addHook("onClose", async () => {
+    for (const connection of sockets) connection.socket.close(1001, "Servidor encerrando");
+    sockets.clear();
+    subscriber.disconnect();
+    publisher?.disconnect();
+    publisher = null;
+  });
 }
