@@ -14,6 +14,8 @@ import type { Facing, TimePhase, Weather } from "./world-presentation";
 const styles = { ...baseStyles, ...polishStyles, ...ugcStyles, ...visualStyles };
 const API_URL = (process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000").replace(/\/$/, "");
 const UGC_WORLD_REFRESH_INTERVAL_MS = 5000;
+const UGC_COOLDOWN_TICK_MS = 250;
+const UGC_COOLDOWN_MAX_CLIENT_MS = 60_000;
 const ANIMATION_STATES = ["idle", "open", "close", "activate", "deactivate", "spin"] as const;
 type AnimationState = typeof ANIMATION_STATES[number];
 
@@ -32,6 +34,13 @@ type WorldPlacement = Readonly<{
   renderMode: "image-billboard-v1" | "glb-model-v1";
   assetPath: string | null;
   assetUri: string | null;
+}>;
+
+type InteractionResponse = Readonly<{
+  animationState?: AnimationState;
+  message?: string;
+  cooldownMs?: number;
+  retryAfterMs?: number;
 }>;
 
 type Props = Readonly<{
@@ -84,10 +93,25 @@ function interactionVerb(current: AnimationState): string {
   return "Parar";
 }
 
+function normalizeServerCooldownMs(value: unknown): number | null {
+  if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) return null;
+  return Math.max(1, Math.min(UGC_COOLDOWN_MAX_CLIENT_MS, Math.ceil(value)));
+}
+
+function retryAfterHeaderMs(response: Response): number | null {
+  const raw = response.headers.get("retry-after");
+  if (!raw) return null;
+  const seconds = Number(raw);
+  if (!Number.isFinite(seconds) || seconds <= 0) return null;
+  return normalizeServerCooldownMs(seconds * 1000);
+}
+
 export function CityWorld({ districts, currentLocationCode, visualLocationCode, busy, facing, timePhase, weather, reducedMotion, onMove }: Props) {
   const [placements, setPlacements] = useState<readonly WorldPlacement[]>([]);
   const [interactionBusyId, setInteractionBusyId] = useState<string | null>(null);
   const [interactionMessage, setInteractionMessage] = useState<string | null>(null);
+  const [cooldownUntilByPlacement, setCooldownUntilByPlacement] = useState<Readonly<Record<string, number>>>({});
+  const [cooldownClock, setCooldownClock] = useState(() => Date.now());
   const locations = districts.flatMap((district) => district.locations);
   const avatarLocation = locations.find((location) => location.code === visualLocationCode) ?? locations[0];
 
@@ -131,8 +155,26 @@ export function CityWorld({ districts, currentLocationCode, visualLocationCode, 
     };
   }, []);
 
+  useEffect(() => {
+    if (!Object.values(cooldownUntilByPlacement).some((until) => until > Date.now())) return;
+    const timer = window.setInterval(() => {
+      const now = Date.now();
+      setCooldownClock(now);
+      setCooldownUntilByPlacement((current) => Object.fromEntries(Object.entries(current).filter(([, until]) => until > now)));
+    }, UGC_COOLDOWN_TICK_MS);
+    return () => window.clearInterval(timer);
+  }, [cooldownUntilByPlacement]);
+
+  function applyServerCooldown(placementId: string, durationMs: number | null): void {
+    if (!durationMs) return;
+    const until = Date.now() + durationMs;
+    setCooldownClock(Date.now());
+    setCooldownUntilByPlacement((current) => ({ ...current, [placementId]: until }));
+  }
+
   async function interact(placement: WorldPlacement): Promise<void> {
-    if (busy || interactionBusyId || placement.locationCode !== currentLocationCode || placement.interactionScope !== "authenticated") return;
+    const existingCooldownUntil = cooldownUntilByPlacement[placement.id] ?? 0;
+    if (busy || interactionBusyId || existingCooldownUntil > Date.now() || placement.locationCode !== currentLocationCode || placement.interactionScope !== "authenticated") return;
     const current = placement.animationState ?? "idle";
     const next = nextInteractiveState(current);
     const verb = interactionVerb(current);
@@ -144,9 +186,17 @@ export function CityWorld({ districts, currentLocationCode, visualLocationCode, 
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ animationState: next })
       });
-      const payload = await response.json() as { animationState?: AnimationState; message?: string };
+      const payload = await response.json() as InteractionResponse;
+      if (response.status === 429) {
+        const retryMs = normalizeServerCooldownMs(payload.retryAfterMs) ?? retryAfterHeaderMs(response);
+        applyServerCooldown(placement.id, retryMs);
+        const retrySeconds = retryMs ? Math.max(1, Math.ceil(retryMs / 1000)) : null;
+        setInteractionMessage(retrySeconds ? `${placement.label}: aguarde ${retrySeconds}s para interagir novamente.` : (payload.message ?? "Aguarde antes de interagir novamente."));
+        return;
+      }
       const returnedState = payload.animationState;
       if (!response.ok || !returnedState) throw new Error(payload.message ?? `Interação UGC ${response.status}`);
+      applyServerCooldown(placement.id, normalizeServerCooldownMs(payload.cooldownMs));
       setPlacements((currentPlacements) => currentPlacements.map((item) => item.id === placement.id ? { ...item, animationState: returnedState } : item));
       setInteractionMessage(`${placement.label}: ${verb.toLocaleLowerCase("pt-BR")} concluído.`);
     } catch (error) {
@@ -178,11 +228,16 @@ export function CityWorld({ districts, currentLocationCode, visualLocationCode, 
         const current = placement.locationCode === currentLocationCode;
         const interactive = current && isGlb && placement.interactionScope === "authenticated";
         const verb = interactionVerb(placement.animationState ?? "idle");
+        const cooldownUntil = cooldownUntilByPlacement[placement.id] ?? 0;
+        const cooldownRemainingMs = Math.max(0, cooldownUntil - cooldownClock);
+        const cooldownRemainingSeconds = cooldownRemainingMs > 0 ? Math.max(1, Math.ceil(cooldownRemainingMs / 1000)) : 0;
+        const coolingDown = cooldownRemainingSeconds > 0;
+        const interactionLabel = coolingDown ? `Aguarde ${cooldownRemainingSeconds}s para ${verb.toLocaleLowerCase("pt-BR")} ${placement.label}` : `${verb} ${placement.label}`;
         return (
           <figure aria-label={`Objeto criado por usuário: ${placement.label}`} className={`${styles.ugcWorldPlacement} ${isGlb ? styles.ugcWorldModel : ""} ${interactive ? styles.ugcWorldInteractive : ""}`} data-animation-state={placement.animationState ?? "idle"} data-current={current ? "true" : "false"} data-interaction-scope={placement.interactionScope ?? "owner_only"} data-render-mode={placement.renderMode} key={placement.id} style={placementStyle}>
             {isImage ? <img alt="" src={assetUrl} /> : <GlbPlacement animationState={placement.animationState} assetUrl={assetUrl} current={current} label={placement.label} rotationYDegrees={placement.rotationYDegrees} />}
             <figcaption>{placement.label}</figcaption>
-            {interactive ? <button aria-label={`${verb} ${placement.label}`} className={styles.ugcInteractionButton} disabled={busy || interactionBusyId !== null} onClick={() => void interact(placement)} type="button">{interactionBusyId === placement.id ? `${verb}…` : verb}</button> : null}
+            {interactive ? <button aria-label={interactionLabel} className={styles.ugcInteractionButton} disabled={busy || interactionBusyId !== null || coolingDown} onClick={() => void interact(placement)} type="button">{interactionBusyId === placement.id ? `${verb}…` : coolingDown ? `Aguarde ${cooldownRemainingSeconds}s` : verb}</button> : null}
           </figure>
         );
       })}

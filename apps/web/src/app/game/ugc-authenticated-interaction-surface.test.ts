@@ -26,9 +26,9 @@ test("map exposes interaction only for authenticated GLB at current player locat
   assert.match(worldSource, /const interactive = current && isGlb && placement\.interactionScope === "authenticated"/);
   assert.match(worldSource, /data-interaction-scope=\{placement\.interactionScope \?\? "owner_only"\}/);
   assert.match(worldSource, /const verb = interactionVerb\(placement\.animationState \?\? "idle"\)/);
-  assert.match(worldSource, /aria-label=\{`\$\{verb\} \$\{placement\.label\}`\}/);
+  assert.match(worldSource, /aria-label=\{interactionLabel\}/);
   assert.match(worldSource, /className=\{styles\.ugcInteractionButton\}/);
-  assert.match(worldSource, />\{interactionBusyId === placement\.id \? `\$\{verb\}…` : verb\}<\/button>/);
+  assert.match(worldSource, /coolingDown \? `Aguarde \$\{cooldownRemainingSeconds\}s` : verb/);
 });
 
 test("player interaction posts canonical next state and immediately updates rendered state", () => {
@@ -41,6 +41,28 @@ test("player interaction posts canonical next state and immediately updates rend
   assert.match(worldSource, /body: JSON\.stringify\(\{ animationState: next \}\)/);
   assert.match(worldSource, /const returnedState = payload\.animationState/);
   assert.match(worldSource, /\{ \.\.\.item, animationState: returnedState \}/);
+});
+
+test("client consumes server-authoritative cooldown without globally blocking other placements", () => {
+  assert.match(worldSource, /cooldownUntilByPlacement/);
+  assert.match(worldSource, /normalizeServerCooldownMs\(payload\.cooldownMs\)/);
+  assert.match(worldSource, /normalizeServerCooldownMs\(payload\.retryAfterMs\) \?\? retryAfterHeaderMs\(response\)/);
+  assert.match(worldSource, /response\.headers\.get\("retry-after"\)/);
+  assert.match(worldSource, /applyServerCooldown\(placement\.id, retryMs\)/);
+  assert.match(worldSource, /applyServerCooldown\(placement\.id, normalizeServerCooldownMs\(payload\.cooldownMs\)\)/);
+  assert.match(worldSource, /existingCooldownUntil > Date\.now\(\)/);
+  assert.match(worldSource, /disabled=\{busy \|\| interactionBusyId !== null \|\| coolingDown\}/);
+  assert.doesNotMatch(worldSource, /const \[globalCooldown/);
+});
+
+test("cooldown countdown is bounded, accessible and releases expired placement timers", () => {
+  assert.match(worldSource, /UGC_COOLDOWN_MAX_CLIENT_MS = 60_000/);
+  assert.match(worldSource, /Math\.min\(UGC_COOLDOWN_MAX_CLIENT_MS, Math\.ceil\(value\)\)/);
+  assert.match(worldSource, /UGC_COOLDOWN_TICK_MS = 250/);
+  assert.match(worldSource, /Object\.entries\(current\)\.filter\(\(\[, until\]\) => until > now\)/);
+  assert.match(worldSource, /return \(\) => window\.clearInterval\(timer\)/);
+  assert.match(worldSource, /Aguarde \$\{cooldownRemainingSeconds\}s para/);
+  assert.match(worldSource, /aria-live="polite" className=\{styles\.ugcInteractionStatus\}/);
 });
 
 test("interactive UGC enables pointer action while retaining visible status and keyboard focus", () => {
