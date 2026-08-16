@@ -30,6 +30,10 @@ const createPlacementSchema = z.object({
   animationState: z.enum(ANIMATION_STATES).default("idle")
 });
 
+const updateAnimationStateSchema = z.object({
+  animationState: z.enum(ANIMATION_STATES)
+});
+
 function assetPath(assetId: string): string {
   return `/v1/ugc/assets/files/${assetId}`;
 }
@@ -222,6 +226,32 @@ export async function registerUgcWorldPlacementRoutes(app: FastifyInstance): Pro
         createdAt: new Date(String(result.row.created_at)).toISOString(),
         updatedAt: new Date(String(result.row.updated_at)).toISOString()
       },
+      animationStates: ANIMATION_STATES,
+      signature: "Tehkné Solutions"
+    };
+  });
+
+  app.patch<{ Params: { placementId: string } }>("/v1/ugc/world/placements/:placementId/animation-state", async (request) => {
+    const actor = await requireActor(app, request);
+    const placementId = z.string().uuid().parse(request.params.placementId);
+    const body = updateAnimationStateSchema.parse(request.body);
+    const row = (await economySql`
+      UPDATE ugc_world_placements placement
+      SET animation_state=${body.animationState},updated_at=now()
+      FROM ugc_binary_asset_upload_sessions asset
+      WHERE placement.id=${placementId}::uuid
+        AND placement.owner_user_id=${actor.userId}::uuid
+        AND placement.status='active'
+        AND asset.id=placement.asset_upload_id
+        AND asset.status='clean'
+        AND asset.content_type='model/gltf-binary'
+      RETURNING placement.id,placement.animation_state,placement.updated_at
+    `)[0];
+    if (!row) throw app.httpErrors.notFound("Placement GLB ativo e controlável não encontrado.");
+    return {
+      placementId: String(row.id),
+      animationState: normalizeAnimationState(row.animation_state),
+      updatedAt: new Date(String(row.updated_at)).toISOString(),
       animationStates: ANIMATION_STATES,
       signature: "Tehkné Solutions"
     };
