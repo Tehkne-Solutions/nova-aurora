@@ -2,7 +2,10 @@
 
 import { useEffect, useState } from "react";
 import { prepareGlbForAnimationState } from "./glb-animation-state-asset";
-import { normalizeObjectAnimationState } from "./glb-object-animation-state";
+import {
+  animationPlaybackForObjectState,
+  normalizeObjectAnimationState
+} from "./glb-object-animation-state";
 import { GlbPlacement as CertifiedGlbPlacement } from "./glb-node-animation-placement";
 import styles from "./glb-placement.module.css";
 
@@ -29,6 +32,7 @@ export function GlbPlacement({
   animationState = "idle"
 }: Props) {
   const normalizedState = normalizeObjectAnimationState(animationState);
+  const playbackPolicy = animationPlaybackForObjectState(normalizedState);
   const [prepared, setPrepared] = useState<Prepared | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -76,7 +80,8 @@ export function GlbPlacement({
         className={styles.viewport}
         data-animation-state={normalizedState}
         data-current={current ? "true" : "false"}
-        data-glb-state-adapter="persisted-state-clip-v1"
+        data-glb-state-adapter="persisted-state-clip-v2"
+        data-playback-policy={playbackPolicy.loop ? "loop" : "one-shot-hold"}
         role="img"
         title={`${label}: ${error}`}
       >
@@ -92,7 +97,8 @@ export function GlbPlacement({
         className={styles.viewport}
         data-animation-state={normalizedState}
         data-current={current ? "true" : "false"}
-        data-glb-state-adapter="persisted-state-clip-v1"
+        data-glb-state-adapter="persisted-state-clip-v2"
+        data-playback-policy={playbackPolicy.loop ? "loop" : "one-shot-hold"}
         role="img"
       >
         <span className={styles.loading}>preparando estado 3D…</span>
@@ -105,12 +111,14 @@ export function GlbPlacement({
       data-animation-state={prepared.state}
       data-selected-clip={prepared.selectedClipName ?? "fallback-clip-0"}
       data-state-reordered={prepared.reordered ? "true" : "false"}
-      data-glb-state-adapter="persisted-state-clip-v1"
+      data-glb-state-adapter="persisted-state-clip-v2"
+      data-playback-policy={playbackPolicy.loop ? "loop" : "one-shot-hold"}
     >
       <CertifiedGlbPlacement
         assetUrl={prepared.url}
         current={current}
         label={label}
+        playbackLoop={playbackPolicy.loop}
         rotationYDegrees={rotationYDegrees}
       />
     </div>
