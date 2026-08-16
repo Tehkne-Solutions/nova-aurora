@@ -4,6 +4,7 @@ import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
 import { CharacterSprite } from "./character-sprite";
 import { CitySceneArt } from "./city-scene-art";
 import { GlbPlacement } from "./glb-placement";
+import { useUgcWorldRealtime } from "./use-ugc-world-realtime";
 import baseStyles from "./game.module.css";
 import polishStyles from "./polish.module.css";
 import ugcStyles from "./ugc-world.module.css";
@@ -114,6 +115,12 @@ export function CityWorld({ districts, currentLocationCode, visualLocationCode, 
   const [cooldownClock, setCooldownClock] = useState(() => Date.now());
   const locations = districts.flatMap((district) => district.locations);
   const avatarLocation = locations.find((location) => location.code === visualLocationCode) ?? locations[0];
+
+  useUgcWorldRealtime(currentLocationCode, (placementId, animationState) => {
+    setPlacements((currentPlacements) => currentPlacements.map((item) =>
+      item.id === placementId ? { ...item, animationState } : item
+    ));
+  });
 
   useEffect(() => {
     let disposed = false;
