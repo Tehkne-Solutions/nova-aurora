@@ -4,7 +4,7 @@ import cors from "@fastify/cors";
 import sensible from "@fastify/sensible";
 import { z } from "zod";
 import { closeDb, MarketProductionService } from "@nova-aurora/database";
-import { authSecurity } from "./auth-context.js";
+import { authSecurity, requireActorId } from "./auth-context.js";
 import { registerAuthRoutes } from "./auth-routes.js";
 import { registerBusinessOperationsRoutes } from "./business-operations-routes.js";
 import { registerCityGovernanceRoutes } from "./city-governance-routes.js";
@@ -138,14 +138,6 @@ function idempotencyKey(request: FastifyRequest): string {
   return key;
 }
 
-async function actorId(request: FastifyRequest): Promise<string> {
-  const email = request.headers["x-actor-email"];
-  if (typeof email !== "string") {
-    throw app.httpErrors.unauthorized("Identidade autenticada não resolvida.");
-  }
-  return economy.resolveUserId(email);
-}
-
 app.setErrorHandler((error, request, reply) => {
   const details = typeof error === "object" && error !== null
     ? error as { statusCode?: unknown; name?: unknown; message?: unknown }
@@ -208,7 +200,7 @@ const marketOrderSchema = z.object({
 app.post("/v1/market/orders", async (request) => {
   const body = marketOrderSchema.parse(request.body);
   return economy.createMarketOrder({
-    ownerId: await actorId(request),
+    ownerId: await requireActorId(app, request),
     ...body,
     idempotencyKey: idempotencyKey(request)
   });
@@ -217,7 +209,7 @@ app.post("/v1/market/orders", async (request) => {
 app.delete<{ Params: { orderId: string } }>(
   "/v1/market/orders/:orderId",
   async (request) => economy.cancelMarketOrder({
-    ownerId: await actorId(request),
+    ownerId: await requireActorId(app, request),
     orderId: request.params.orderId,
     idempotencyKey: idempotencyKey(request)
   })
@@ -247,7 +239,7 @@ const productionSchema = z.object({
 app.post("/v1/production/orders", async (request) => {
   const body = productionSchema.parse(request.body);
   const order = await economy.startProduction({
-    ownerId: await actorId(request),
+    ownerId: await requireActorId(app, request),
     ...body,
     idempotencyKey: idempotencyKey(request)
   });
@@ -268,14 +260,14 @@ app.post("/v1/production/orders", async (request) => {
 app.delete<{ Params: { orderId: string } }>(
   "/v1/production/orders/:orderId",
   async (request) => economy.cancelProduction({
-    ownerId: await actorId(request),
+    ownerId: await requireActorId(app, request),
     orderId: request.params.orderId,
     idempotencyKey: idempotencyKey(request)
   })
 );
 
 app.get("/v1/production/orders", async (request) =>
-  economy.productionOrders(await actorId(request))
+  economy.productionOrders(await requireActorId(app, request))
 );
 
 let shuttingDown = false;
@@ -309,3 +301,5 @@ await app.listen({
   host: "0.0.0.0",
   port: Number(process.env.API_PORT ?? 4000)
 });
+
+// Tehkné Solutions
