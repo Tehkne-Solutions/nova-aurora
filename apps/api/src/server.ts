@@ -24,6 +24,7 @@ import {
   registerRegionalBusinessManagementRoutes
 } from "./regional-business-management-routes.js";
 import { registerSecurity } from "./security.js";
+import { registerUgcWorldInteractionRoutes } from "./ugc-world-interaction-routes.js";
 
 function requestId(request: { headers: Record<string, string | string[] | undefined> }): string {
   const supplied = request.headers["x-request-id"];
@@ -114,6 +115,7 @@ await app.register(cors, {
 await app.register(sensible);
 await registerObservability(app);
 await registerSecurity(app);
+await registerUgcWorldInteractionRoutes(app);
 await registerAuthRoutes(app);
 await registerComplianceRoutes(app);
 await registerReleaseRoutes(app);
