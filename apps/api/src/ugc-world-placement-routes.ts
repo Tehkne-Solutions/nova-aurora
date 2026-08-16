@@ -39,141 +39,303 @@ const createPlacementSchema = z.object({
   interactionScope: z.enum(INTERACTION_SCOPES).default("owner_only")
 });
 
-const updateAnimationStateSchema = z.object({ animationState: z.enum(ANIMATION_STATES) });
-const updateInteractionScopeSchema = z.object({ interactionScope: z.enum(INTERACTION_SCOPES) });
+const updateAnimationStateSchema = z.object({
+  animationState: z.enum(ANIMATION_STATES)
+});
 
-function assetPath(assetId: string): string { return `/v1/ugc/assets/files/${assetId}`; }
+const updateInteractionScopeSchema = z.object({
+  interactionScope: z.enum(INTERACTION_SCOPES)
+});
+
+function assetPath(assetId: string): string {
+  return `/v1/ugc/assets/files/${assetId}`;
+}
+
 function assetUri(assetId: string): string | null {
   const base = (process.env.PUBLIC_API_URL ?? "").trim().replace(/\/$/, "");
   return base.startsWith("https://") ? `${base}${assetPath(assetId)}` : null;
 }
-function renderMode(contentType: string): RenderMode { return contentType === GLB_CONTENT_TYPE ? "glb-model-v1" : "image-billboard-v1"; }
-function isRenderableContentType(value: string): value is RenderableContentType { return RENDERABLE_CONTENT_TYPES.includes(value as RenderableContentType); }
-function normalizeAnimationState(value: unknown): AnimationState { return ANIMATION_STATES.includes(value as AnimationState) ? value as AnimationState : "idle"; }
-function normalizeInteractionScope(value: unknown): InteractionScope { return INTERACTION_SCOPES.includes(value as InteractionScope) ? value as InteractionScope : "owner_only"; }
+
+function renderMode(contentType: string): RenderMode {
+  return contentType === GLB_CONTENT_TYPE ? "glb-model-v1" : "image-billboard-v1";
+}
+
+function isRenderableContentType(value: string): value is RenderableContentType {
+  return RENDERABLE_CONTENT_TYPES.includes(value as RenderableContentType);
+}
+
+function normalizeAnimationState(value: unknown): AnimationState {
+  return ANIMATION_STATES.includes(value as AnimationState) ? value as AnimationState : "idle";
+}
+
+function normalizeInteractionScope(value: unknown): InteractionScope {
+  return INTERACTION_SCOPES.includes(value as InteractionScope) ? value as InteractionScope : "owner_only";
+}
 
 function serializePlacement(row: Record<string, unknown>) {
   const assetId = String(row.asset_upload_id);
   const contentType = String(row.content_type);
   return {
-    id: String(row.id), ownerUserId: String(row.owner_user_id), assetId,
-    locationCode: String(row.location_code), locationName: String(row.location_name), label: String(row.label),
-    offsetX: Number(row.offset_x), offsetY: Number(row.offset_y), scalePercent: Number(row.scale_percent),
-    rotationYDegrees: Number(row.rotation_y_degrees ?? 0), animationState: normalizeAnimationState(row.animation_state),
-    interactionScope: normalizeInteractionScope(row.interaction_scope), contentType, renderMode: renderMode(contentType),
-    fileName: String(row.file_name), sha256: String(row.verified_sha256), assetPath: assetPath(assetId), assetUri: assetUri(assetId),
-    createdAt: new Date(String(row.created_at)).toISOString(), updatedAt: new Date(String(row.updated_at)).toISOString()
-  };
-}
-
-function capabilities() {
-  return {
-    visitorMutationEnabled: false,
-    interactionCapabilities: INTERACTION_CAPABILITIES
+    id: String(row.id),
+    ownerUserId: String(row.owner_user_id),
+    assetId,
+    locationCode: String(row.location_code),
+    locationName: String(row.location_name),
+    label: String(row.label),
+    offsetX: Number(row.offset_x),
+    offsetY: Number(row.offset_y),
+    scalePercent: Number(row.scale_percent),
+    rotationYDegrees: Number(row.rotation_y_degrees ?? 0),
+    animationState: normalizeAnimationState(row.animation_state),
+    interactionScope: normalizeInteractionScope(row.interaction_scope),
+    contentType,
+    renderMode: renderMode(contentType),
+    fileName: String(row.file_name),
+    sha256: String(row.verified_sha256),
+    assetPath: assetPath(assetId),
+    assetUri: assetUri(assetId),
+    createdAt: new Date(String(row.created_at)).toISOString(),
+    updatedAt: new Date(String(row.updated_at)).toISOString()
   };
 }
 
 export async function registerUgcWorldPlacementRoutes(app: FastifyInstance): Promise<void> {
   app.get("/v1/ugc/world/locations", async () => {
     const rows = await economySql`
-      SELECT location.code,location.name,location.location_type,district.code district_code,district.name district_name
-      FROM city_locations location JOIN city_districts district ON district.id=location.district_id
+      SELECT location.code,location.name,location.location_type,
+        district.code district_code,district.name district_name
+      FROM city_locations location
+      JOIN city_districts district ON district.id=location.district_id
       ORDER BY district.sort_order,location.map_y,location.map_x,location.code
     `;
-    return { locations: rows.map((row) => ({ code: String(row.code), name: String(row.name), locationType: String(row.location_type), districtCode: String(row.district_code), districtName: String(row.district_name) })), signature: "Tehkné Solutions" };
+    return {
+      locations: rows.map((row) => ({
+        code: String(row.code),
+        name: String(row.name),
+        locationType: String(row.location_type),
+        districtCode: String(row.district_code),
+        districtName: String(row.district_name)
+      })),
+      signature: "Tehkné Solutions"
+    };
   });
 
   app.get("/v1/ugc/world/placements", async (request) => {
     const query = placementQuerySchema.parse(request.query);
     const rows = await economySql`
-      SELECT placement.id,placement.owner_user_id,placement.asset_upload_id,placement.label,placement.offset_x,placement.offset_y,placement.scale_percent,
-        placement.rotation_y_degrees,placement.animation_state,placement.interaction_scope,placement.created_at,placement.updated_at,
-        location.code location_code,location.name location_name,asset.file_name,asset.content_type,asset.verified_sha256
+      SELECT placement.id,placement.owner_user_id,placement.asset_upload_id,
+        placement.label,placement.offset_x,placement.offset_y,placement.scale_percent,
+        placement.rotation_y_degrees,placement.animation_state,placement.interaction_scope,
+        placement.created_at,placement.updated_at,
+        location.code location_code,location.name location_name,
+        asset.file_name,asset.content_type,asset.verified_sha256
       FROM ugc_world_placements placement
       JOIN city_locations location ON location.id=placement.location_id
       JOIN ugc_binary_asset_upload_sessions asset ON asset.id=placement.asset_upload_id
-      WHERE placement.status='active' AND asset.status='clean'
+      WHERE placement.status='active'
+        AND asset.status='clean'
         AND asset.content_type IN ('image/png','image/jpeg','image/webp','model/gltf-binary')
         AND (${query.locationCode ?? null}::text IS NULL OR location.code=${query.locationCode ?? null})
-      ORDER BY location.code,placement.created_at,placement.id LIMIT ${query.limit}
+      ORDER BY location.code,placement.created_at,placement.id
+      LIMIT ${query.limit}
     `;
-    return { placements: rows.map((row) => serializePlacement(row)), filter: { locationCode: query.locationCode ?? null, limit: query.limit }, renderMode: "image-billboard-v1" as const, renderModes: ["image-billboard-v1", "glb-model-v1"] as const, animationStates: ANIMATION_STATES, interactionScopes: INTERACTION_SCOPES, ...capabilities(), signature: "Tehkné Solutions" };
+    return {
+      placements: rows.map((row) => serializePlacement(row)),
+      filter: { locationCode: query.locationCode ?? null, limit: query.limit },
+      renderMode: "image-billboard-v1" as const,
+      renderModes: ["image-billboard-v1", "glb-model-v1"] as const,
+      animationStates: ANIMATION_STATES,
+      interactionScopes: INTERACTION_SCOPES,
+      visitorMutationEnabled: false,
+      interactionCapabilities: INTERACTION_CAPABILITIES,
+      signature: "Tehkné Solutions"
+    };
   });
 
   app.get("/v1/ugc/world/placements/me", async (request) => {
     const actor = await requireActor(app, request);
     const rows = await economySql`
-      SELECT placement.id,placement.owner_user_id,placement.asset_upload_id,placement.label,placement.offset_x,placement.offset_y,placement.scale_percent,
-        placement.rotation_y_degrees,placement.animation_state,placement.interaction_scope,placement.created_at,placement.updated_at,
-        location.code location_code,location.name location_name,asset.file_name,asset.content_type,asset.verified_sha256
+      SELECT placement.id,placement.owner_user_id,placement.asset_upload_id,
+        placement.label,placement.offset_x,placement.offset_y,placement.scale_percent,
+        placement.rotation_y_degrees,placement.animation_state,placement.interaction_scope,
+        placement.created_at,placement.updated_at,
+        location.code location_code,location.name location_name,
+        asset.file_name,asset.content_type,asset.verified_sha256
       FROM ugc_world_placements placement
       JOIN city_locations location ON location.id=placement.location_id
       JOIN ugc_binary_asset_upload_sessions asset ON asset.id=placement.asset_upload_id
-      WHERE placement.owner_user_id=${actor.userId}::uuid AND placement.status='active' AND asset.status='clean'
+      WHERE placement.owner_user_id=${actor.userId}::uuid
+        AND placement.status='active'
+        AND asset.status='clean'
         AND asset.content_type IN ('image/png','image/jpeg','image/webp','model/gltf-binary')
-      ORDER BY placement.created_at DESC,placement.id DESC LIMIT 200
+      ORDER BY placement.created_at DESC,placement.id DESC
+      LIMIT 200
     `;
-    return { placements: rows.map((row) => serializePlacement(row)), animationStates: ANIMATION_STATES, interactionScopes: INTERACTION_SCOPES, ...capabilities(), signature: "Tehkné Solutions" };
+    return {
+      placements: rows.map((row) => serializePlacement(row)),
+      animationStates: ANIMATION_STATES,
+      interactionScopes: INTERACTION_SCOPES,
+      visitorMutationEnabled: false,
+      interactionCapabilities: INTERACTION_CAPABILITIES,
+      signature: "Tehkné Solutions"
+    };
   });
 
   app.post("/v1/ugc/world/placements", async (request) => {
     const actor = await requireActor(app, request);
     const body = createPlacementSchema.parse(request.body);
     const placementId = randomUUID();
+
     const result = await economySql.begin("isolation level serializable", async (tx) => {
-      const location = (await tx`SELECT id,code,name FROM city_locations WHERE code=${body.locationCode}`)[0];
+      const location = (await tx`
+        SELECT id,code,name FROM city_locations WHERE code=${body.locationCode}
+      `)[0];
       if (!location) throw app.httpErrors.notFound("Local da cidade não encontrado.");
-      const asset = (await tx`SELECT id,owner_user_id,status,content_type,file_name,verified_sha256 FROM ugc_binary_asset_upload_sessions WHERE id=${body.assetId}::uuid FOR SHARE`)[0];
+
+      const asset = (await tx`
+        SELECT id,owner_user_id,status,content_type,file_name,verified_sha256
+        FROM ugc_binary_asset_upload_sessions
+        WHERE id=${body.assetId}::uuid
+        FOR SHARE
+      `)[0];
       if (!asset) throw app.httpErrors.notFound("Asset UGC não encontrado.");
-      if (String(asset.owner_user_id) !== actor.userId) throw app.httpErrors.forbidden("Somente o proprietário pode colocar este asset no mundo.");
-      if (String(asset.status) !== "clean") throw app.httpErrors.conflict("Somente assets limpos podem ser colocados no mundo.");
+      if (String(asset.owner_user_id) !== actor.userId) {
+        throw app.httpErrors.forbidden("Somente o proprietário pode colocar este asset no mundo.");
+      }
+      if (String(asset.status) !== "clean") {
+        throw app.httpErrors.conflict("Somente assets limpos podem ser colocados no mundo.");
+      }
       const contentType = String(asset.content_type);
-      if (!isRenderableContentType(contentType)) throw app.httpErrors.badRequest("O renderer atual aceita PNG, JPEG, WebP e GLB verificado.");
+      if (!isRenderableContentType(contentType)) {
+        throw app.httpErrors.badRequest("O renderer atual aceita PNG, JPEG, WebP e GLB verificado.");
+      }
       const interactionScope = contentType === GLB_CONTENT_TYPE ? body.interactionScope : "owner_only";
-      const count = Number((await tx`SELECT count(*)::int count FROM ugc_world_placements WHERE owner_user_id=${actor.userId}::uuid AND location_id=${String(location.id)}::uuid AND status='active'`)[0]?.count ?? 0);
-      if (count >= 12) throw app.httpErrors.conflict("Limite inicial de 12 objetos ativos por criador e local atingido.");
+
+      const count = Number((await tx`
+        SELECT count(*)::int count
+        FROM ugc_world_placements
+        WHERE owner_user_id=${actor.userId}::uuid
+          AND location_id=${String(location.id)}::uuid
+          AND status='active'
+      `)[0]?.count ?? 0);
+      if (count >= 12) {
+        throw app.httpErrors.conflict("Limite inicial de 12 objetos ativos por criador e local atingido.");
+      }
+
       const row = (await tx`
-        INSERT INTO ugc_world_placements (id,owner_user_id,asset_upload_id,location_id,label,offset_x,offset_y,scale_percent,rotation_y_degrees,animation_state,interaction_scope,status)
-        VALUES (${placementId}::uuid,${actor.userId}::uuid,${body.assetId}::uuid,${String(location.id)}::uuid,${body.label},${body.offsetX},${body.offsetY},${body.scalePercent},${body.rotationYDegrees},${body.animationState},${interactionScope},'active')
-        RETURNING id,owner_user_id,asset_upload_id,label,offset_x,offset_y,scale_percent,rotation_y_degrees,animation_state,interaction_scope,created_at,updated_at
+        INSERT INTO ugc_world_placements (
+          id,owner_user_id,asset_upload_id,location_id,label,
+          offset_x,offset_y,scale_percent,rotation_y_degrees,animation_state,interaction_scope,status
+        ) VALUES (
+          ${placementId}::uuid,${actor.userId}::uuid,${body.assetId}::uuid,${String(location.id)}::uuid,
+          ${body.label},${body.offsetX},${body.offsetY},${body.scalePercent},${body.rotationYDegrees},
+          ${body.animationState},${interactionScope},'active'
+        )
+        RETURNING id,owner_user_id,asset_upload_id,label,offset_x,offset_y,scale_percent,
+          rotation_y_degrees,animation_state,interaction_scope,created_at,updated_at
       `)[0]!;
       return { row, contentType, fileName: String(asset.file_name), sha256: String(asset.verified_sha256) };
     });
-    return { placement: { id: String(result.row.id), ownerUserId: String(result.row.owner_user_id), assetId: String(result.row.asset_upload_id), locationCode: body.locationCode, label: String(result.row.label), offsetX: Number(result.row.offset_x), offsetY: Number(result.row.offset_y), scalePercent: Number(result.row.scale_percent), rotationYDegrees: Number(result.row.rotation_y_degrees), animationState: normalizeAnimationState(result.row.animation_state), interactionScope: normalizeInteractionScope(result.row.interaction_scope), contentType: result.contentType, renderMode: renderMode(result.contentType), fileName: result.fileName, sha256: result.sha256, assetPath: assetPath(body.assetId), assetUri: assetUri(body.assetId), createdAt: new Date(String(result.row.created_at)).toISOString(), updatedAt: new Date(String(result.row.updated_at)).toISOString() }, animationStates: ANIMATION_STATES, interactionScopes: INTERACTION_SCOPES, ...capabilities(), signature: "Tehkné Solutions" };
+
+    return {
+      placement: {
+        id: String(result.row.id),
+        ownerUserId: String(result.row.owner_user_id),
+        assetId: String(result.row.asset_upload_id),
+        locationCode: body.locationCode,
+        label: String(result.row.label),
+        offsetX: Number(result.row.offset_x),
+        offsetY: Number(result.row.offset_y),
+        scalePercent: Number(result.row.scale_percent),
+        rotationYDegrees: Number(result.row.rotation_y_degrees),
+        animationState: normalizeAnimationState(result.row.animation_state),
+        interactionScope: normalizeInteractionScope(result.row.interaction_scope),
+        contentType: result.contentType,
+        renderMode: renderMode(result.contentType),
+        fileName: result.fileName,
+        sha256: result.sha256,
+        assetPath: assetPath(body.assetId),
+        assetUri: assetUri(body.assetId),
+        createdAt: new Date(String(result.row.created_at)).toISOString(),
+        updatedAt: new Date(String(result.row.updated_at)).toISOString()
+      },
+      animationStates: ANIMATION_STATES,
+      interactionScopes: INTERACTION_SCOPES,
+      visitorMutationEnabled: false,
+      interactionCapabilities: INTERACTION_CAPABILITIES,
+      signature: "Tehkné Solutions"
+    };
   });
 
   app.patch<{ Params: { placementId: string } }>("/v1/ugc/world/placements/:placementId/animation-state", async (request) => {
-    const actor = await requireActor(app, request); const placementId = z.string().uuid().parse(request.params.placementId); const body = updateAnimationStateSchema.parse(request.body);
+    const actor = await requireActor(app, request);
+    const placementId = z.string().uuid().parse(request.params.placementId);
+    const body = updateAnimationStateSchema.parse(request.body);
     const row = (await economySql`
-      UPDATE ugc_world_placements placement SET animation_state=${body.animationState},updated_at=now()
+      UPDATE ugc_world_placements placement
+      SET animation_state=${body.animationState},updated_at=now()
       FROM ugc_binary_asset_upload_sessions asset
-      WHERE placement.id=${placementId}::uuid AND placement.owner_user_id=${actor.userId}::uuid AND placement.status='active'
-        AND asset.id=placement.asset_upload_id AND asset.status='clean' AND asset.content_type='model/gltf-binary'
+      WHERE placement.id=${placementId}::uuid
+        AND placement.owner_user_id=${actor.userId}::uuid
+        AND placement.status='active'
+        AND asset.id=placement.asset_upload_id
+        AND asset.status='clean'
+        AND asset.content_type='model/gltf-binary'
       RETURNING placement.id,placement.animation_state,placement.updated_at
     `)[0];
     if (!row) throw app.httpErrors.notFound("Placement GLB ativo e controlável não encontrado.");
-    return { placementId: String(row.id), animationState: normalizeAnimationState(row.animation_state), updatedAt: new Date(String(row.updated_at)).toISOString(), animationStates: ANIMATION_STATES, signature: "Tehkné Solutions" };
+    return {
+      placementId: String(row.id),
+      animationState: normalizeAnimationState(row.animation_state),
+      updatedAt: new Date(String(row.updated_at)).toISOString(),
+      animationStates: ANIMATION_STATES,
+      signature: "Tehkné Solutions"
+    };
   });
 
   app.patch<{ Params: { placementId: string } }>("/v1/ugc/world/placements/:placementId/interaction-scope", async (request) => {
-    const actor = await requireActor(app, request); const placementId = z.string().uuid().parse(request.params.placementId); const body = updateInteractionScopeSchema.parse(request.body);
+    const actor = await requireActor(app, request);
+    const placementId = z.string().uuid().parse(request.params.placementId);
+    const body = updateInteractionScopeSchema.parse(request.body);
     const row = (await economySql`
-      UPDATE ugc_world_placements placement SET interaction_scope=${body.interactionScope},updated_at=now()
+      UPDATE ugc_world_placements placement
+      SET interaction_scope=${body.interactionScope},updated_at=now()
       FROM ugc_binary_asset_upload_sessions asset
-      WHERE placement.id=${placementId}::uuid AND placement.owner_user_id=${actor.userId}::uuid AND placement.status='active'
-        AND asset.id=placement.asset_upload_id AND asset.status='clean' AND asset.content_type='model/gltf-binary'
+      WHERE placement.id=${placementId}::uuid
+        AND placement.owner_user_id=${actor.userId}::uuid
+        AND placement.status='active'
+        AND asset.id=placement.asset_upload_id
+        AND asset.status='clean'
+        AND asset.content_type='model/gltf-binary'
       RETURNING placement.id,placement.interaction_scope,placement.updated_at
     `)[0];
     if (!row) throw app.httpErrors.notFound("Placement GLB ativo e configurável não encontrado.");
-    return { placementId: String(row.id), interactionScope: normalizeInteractionScope(row.interaction_scope), ...capabilities(), interactionScopes: INTERACTION_SCOPES, updatedAt: new Date(String(row.updated_at)).toISOString(), signature: "Tehkné Solutions" };
+    return {
+      placementId: String(row.id),
+      interactionScope: normalizeInteractionScope(row.interaction_scope),
+      visitorMutationEnabled: false,
+      interactionCapabilities: INTERACTION_CAPABILITIES,
+      interactionScopes: INTERACTION_SCOPES,
+      updatedAt: new Date(String(row.updated_at)).toISOString(),
+      signature: "Tehkné Solutions"
+    };
   });
 
   app.delete<{ Params: { placementId: string } }>("/v1/ugc/world/placements/:placementId", async (request) => {
-    const actor = await requireActor(app, request); const placementId = z.string().uuid().parse(request.params.placementId);
-    const current = (await economySql`SELECT id,status FROM ugc_world_placements WHERE id=${placementId}::uuid AND owner_user_id=${actor.userId}::uuid`)[0];
+    const actor = await requireActor(app, request);
+    const placementId = z.string().uuid().parse(request.params.placementId);
+    const current = (await economySql`
+      SELECT id,status FROM ugc_world_placements
+      WHERE id=${placementId}::uuid AND owner_user_id=${actor.userId}::uuid
+    `)[0];
     if (!current) throw app.httpErrors.notFound("Placement UGC não encontrado.");
-    if (String(current.status) === "removed") return { removed: false, placementId, signature: "Tehkné Solutions" };
-    await economySql`UPDATE ugc_world_placements SET status='removed',updated_at=now() WHERE id=${placementId}::uuid AND owner_user_id=${actor.userId}::uuid`;
+    if (String(current.status) === "removed") {
+      return { removed: false, placementId, signature: "Tehkné Solutions" };
+    }
+    await economySql`
+      UPDATE ugc_world_placements SET status='removed',updated_at=now()
+      WHERE id=${placementId}::uuid AND owner_user_id=${actor.userId}::uuid
+    `;
     return { removed: true, placementId, signature: "Tehkné Solutions" };
   });
 }
