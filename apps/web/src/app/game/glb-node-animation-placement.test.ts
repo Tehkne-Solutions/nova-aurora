@@ -15,6 +15,23 @@ test("canonical GLB entrypoint routes persisted state into node animation v10", 
   assert.match(source, /data-glb-renderer="first-party-webgl-pbr-node-animation-v10"/);
 });
 
+test("persisted object policy reaches the renderer as loop versus one-shot hold", () => {
+  assert.match(stateful, /animationPlaybackForObjectState\(normalizedState\)/);
+  assert.match(stateful, /playbackLoop=\{playbackPolicy\.loop\}/);
+  assert.match(stateful, /data-playback-policy=\{playbackPolicy\.loop \? "loop" : "one-shot-hold"\}/);
+  assert.match(source, /playbackLoop\?: boolean;/);
+  assert.match(source, /playbackLoop = true/);
+  assert.match(source, /data-playback-loop=\{playbackLoop \? "true" : "false"\}/);
+});
+
+test("one-shot playback clamps at authored duration and stops scheduling while preserving the final pose", () => {
+  assert.match(source, /const animationDurationSeconds = hasAnimation \? animationModel\.clips\[0\]!\.durationSeconds : 0;/);
+  assert.match(source, /sampleCertifiedNodeWorldMatrices\(animationModel, 0, elapsed, playbackLoop\)/);
+  assert.match(source, /if \(hasAnimation && !playbackLoop && elapsed >= animationDurationSeconds\) completed = true;/);
+  assert.match(source, /if \(completed\) return;/);
+  assert.match(source, /const resizeObserver = new ResizeObserver\(\(\) => draw\(performance\.now\(\)\)\);/);
+});
+
 test("animated runtime schedules cancellable frames only while visible", () => {
   assert.match(source, /requestAnimationFrame\(/);
   assert.match(source, /cancelAnimationFrame\(frameId\)/);
@@ -41,7 +58,7 @@ test("cleanup cancels frame loop, disconnects observers and frees GPU resources"
 test("static GLB remains supported without starting a RAF animation loop", () => {
   assert.match(source, /const hasAnimation = animationModel\.clips\.length > 0 && animationModel\.clips\[0\]!\.durationSeconds > 0;/);
   assert.match(source, /if \(hasAnimation\) \{ visibleStartMs = performance\.now\(\); schedule\(\); \}/);
-  assert.match(source, /setAnimation\(animationModel\.clips\.length > 0 \? "animated" : "static"\)/);
+  assert.match(source, /setAnimation\(animationModel\.clips\.length > 0 \? \(playbackLoop \? "animated-loop" : "animated-one-shot-hold"\) : "static"\)/);
 });
 
 test("animated transparency uses transformed centroid and inverse-transpose normals", () => {
