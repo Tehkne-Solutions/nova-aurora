@@ -7,6 +7,7 @@ import { requireActor } from "./auth-context.js";
 const economySql = db();
 const ANIMATION_STATES = ["idle", "open", "close", "activate", "deactivate", "spin"] as const;
 const INTERACTION_COOLDOWN_SECONDS = 2;
+const INTERACTION_COOLDOWN_MS = INTERACTION_COOLDOWN_SECONDS * 1000;
 
 type AnimationState = typeof ANIMATION_STATES[number];
 
@@ -19,7 +20,7 @@ function normalizeAnimationState(value: unknown): AnimationState {
 }
 
 export async function registerUgcWorldInteractionRoutes(app: FastifyInstance): Promise<void> {
-  app.post<{ Params: { placementId: string } }>("/v1/ugc/world/placements/:placementId/interactions", async (request) => {
+  app.post<{ Params: { placementId: string } }>("/v1/ugc/world/placements/:placementId/interactions", async (request, reply) => {
     const actor = await requireActor(app, request);
     const placementId = z.string().uuid().parse(request.params.placementId);
     const body = interactionSchema.parse(request.body);
@@ -43,7 +44,8 @@ export async function registerUgcWorldInteractionRoutes(app: FastifyInstance): P
       }
 
       const recent = (await tx`
-        SELECT id
+        SELECT id,
+          GREATEST(1, CEIL(EXTRACT(EPOCH FROM ((created_at + interval '2 seconds') - now())) * 1000))::int retry_after_ms
         FROM ugc_world_placement_interactions
         WHERE placement_id=${placementId}::uuid
           AND actor_user_id=${actor.userId}::uuid
@@ -52,7 +54,10 @@ export async function registerUgcWorldInteractionRoutes(app: FastifyInstance): P
         LIMIT 1
       `)[0];
       if (recent) {
-        throw app.httpErrors.tooManyRequests("Aguarde o cooldown antes de interagir novamente com este objeto.");
+        return {
+          cooldownBlocked: true as const,
+          retryAfterMs: Math.min(INTERACTION_COOLDOWN_MS, Math.max(1, Number(recent.retry_after_ms)))
+        };
       }
 
       const previousState = normalizeAnimationState(placement.animation_state);
@@ -73,11 +78,26 @@ export async function registerUgcWorldInteractionRoutes(app: FastifyInstance): P
       `;
 
       return {
+        cooldownBlocked: false as const,
         previousState,
         animationState: normalizeAnimationState(updated.animation_state),
         updatedAt: new Date(String(updated.updated_at)).toISOString()
       };
     });
+
+    if (result.cooldownBlocked) {
+      const retryAfterSeconds = Math.max(1, Math.ceil(result.retryAfterMs / 1000));
+      reply.header("retry-after", String(retryAfterSeconds));
+      return reply.code(429).send({
+        statusCode: 429,
+        error: "Too Many Requests",
+        message: "Aguarde o cooldown antes de interagir novamente com este objeto.",
+        placementId,
+        retryAfterMs: result.retryAfterMs,
+        cooldownMs: INTERACTION_COOLDOWN_MS,
+        signature: "Tehkné Solutions"
+      });
+    }
 
     return {
       interactionId,
@@ -85,7 +105,7 @@ export async function registerUgcWorldInteractionRoutes(app: FastifyInstance): P
       actorUserId: actor.userId,
       previousAnimationState: result.previousState,
       animationState: result.animationState,
-      cooldownMs: INTERACTION_COOLDOWN_SECONDS * 1000,
+      cooldownMs: INTERACTION_COOLDOWN_MS,
       updatedAt: result.updatedAt,
       signature: "Tehkné Solutions"
     };

@@ -38,11 +38,14 @@ test("visitor interaction is fail-closed to active clean authenticated GLB place
 test("visitor interaction applies per-user per-placement cooldown and records state transition", () => {
   assert.match(routeSource, /actor_user_id=\$\{actor\.userId\}::uuid/);
   assert.match(routeSource, /created_at > now\(\) - interval '2 seconds'/);
-  assert.match(routeSource, /tooManyRequests/);
+  assert.match(routeSource, /retry_after_ms/);
+  assert.match(routeSource, /reply\.header\("retry-after", String\(retryAfterSeconds\)\)/);
+  assert.match(routeSource, /reply\.code\(429\)\.send/);
+  assert.match(routeSource, /retryAfterMs: result\.retryAfterMs/);
+  assert.match(routeSource, /cooldownMs: INTERACTION_COOLDOWN_MS/);
   assert.match(routeSource, /SET animation_state=\$\{body\.animationState\},updated_at=now\(\)/);
   assert.match(routeSource, /INSERT INTO ugc_world_placement_interactions/);
   assert.match(routeSource, /\$\{previousState\},\$\{body\.animationState\},'authenticated-visitor'/);
-  assert.match(routeSource, /cooldownMs: INTERACTION_COOLDOWN_SECONDS \* 1000/);
 });
 
 // Tehkné Solutions
