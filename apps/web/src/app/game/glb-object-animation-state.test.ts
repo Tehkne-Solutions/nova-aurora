@@ -22,12 +22,12 @@ const model: NodeAnimationRuntimeModel = {
 test("idle and spin are looping object states", () => {
   assert.deepEqual(animationPlaybackForObjectState("idle"), {
     state: "idle",
-    selector: { name: "Idle" },
+    selector: "Idle",
     loop: true
   });
   assert.deepEqual(animationPlaybackForObjectState("spin"), {
     state: "spin",
-    selector: { name: "Spin" },
+    selector: "Spin",
     loop: true
   });
 });
@@ -38,10 +38,10 @@ test("open close activate and deactivate are one-shot states", () => {
     assert.equal(policy.loop, false);
     assert.equal(policy.state, state);
   }
-  assert.deepEqual(animationPlaybackForObjectState("open").selector, { name: "Open" });
-  assert.deepEqual(animationPlaybackForObjectState("close").selector, { name: "Close" });
-  assert.deepEqual(animationPlaybackForObjectState("activate").selector, { name: "Activate" });
-  assert.deepEqual(animationPlaybackForObjectState("deactivate").selector, { name: "Deactivate" });
+  assert.equal(animationPlaybackForObjectState("open").selector, "Open");
+  assert.equal(animationPlaybackForObjectState("close").selector, "Close");
+  assert.equal(animationPlaybackForObjectState("activate").selector, "Activate");
+  assert.equal(animationPlaybackForObjectState("deactivate").selector, "Deactivate");
 });
 
 test("external state normalization is case insensitive and fails safe to idle", () => {
