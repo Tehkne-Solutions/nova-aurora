@@ -1,6 +1,7 @@
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { z } from "zod";
 import { BusinessOperationsService } from "@nova-aurora/database";
+import { requireActorId } from "./auth-context.js";
 
 const operations = new BusinessOperationsService();
 
@@ -10,16 +11,6 @@ function idempotencyKey(app: FastifyInstance, request: FastifyRequest): string {
     throw app.httpErrors.badRequest("Idempotency-Key obrigatório.");
   }
   return key;
-}
-
-async function actorId(app: FastifyInstance, request: FastifyRequest): Promise<string> {
-  const email = request.headers["x-actor-email"];
-  if (typeof email !== "string") {
-    throw app.httpErrors.unauthorized(
-      "Cabeçalho x-actor-email obrigatório no runtime de desenvolvimento."
-    );
-  }
-  return operations.resolveUserId(email);
 }
 
 const catalogSchema = z.object({
@@ -54,7 +45,7 @@ export async function registerBusinessOperationsRoutes(
   app: FastifyInstance
 ): Promise<void> {
   app.get("/v1/marketplace/state", async (request) =>
-    operations.state(await actorId(app, request))
+    operations.state(await requireActorId(app, request))
   );
 
   app.post<{ Params: { buildingId: string } }>(
@@ -62,7 +53,7 @@ export async function registerBusinessOperationsRoutes(
     async (request) => {
       const body = catalogSchema.parse(request.body);
       return operations.configureCatalog({
-        ownerId: await actorId(app, request),
+        ownerId: await requireActorId(app, request),
         buildingId: request.params.buildingId,
         ...body,
         idempotencyKey: idempotencyKey(app, request)
@@ -73,7 +64,7 @@ export async function registerBusinessOperationsRoutes(
   app.post<{ Params: { buildingId: string } }>(
     "/v1/marketplace/buildings/:buildingId/demand-cycle",
     async (request) => operations.runDemandCycle({
-      ownerId: await actorId(app, request),
+      ownerId: await requireActorId(app, request),
       buildingId: request.params.buildingId,
       idempotencyKey: idempotencyKey(app, request)
     })
@@ -85,7 +76,7 @@ export async function registerBusinessOperationsRoutes(
       const body = jobSchema.parse(request.body);
       const { buildingId, ...job } = body;
       return operations.createJobOpening({
-        ownerId: await actorId(app, request),
+        ownerId: await requireActorId(app, request),
         companyId: request.params.companyId,
         ...job,
         ...(buildingId === undefined ? {} : { buildingId }),
@@ -97,7 +88,7 @@ export async function registerBusinessOperationsRoutes(
   app.post<{ Params: { openingId: string } }>(
     "/v1/marketplace/jobs/:openingId/accept",
     async (request) => operations.acceptJob({
-      ownerId: await actorId(app, request),
+      ownerId: await requireActorId(app, request),
       openingId: request.params.openingId,
       idempotencyKey: idempotencyKey(app, request)
     })
@@ -106,7 +97,7 @@ export async function registerBusinessOperationsRoutes(
   app.post<{ Params: { companyId: string } }>(
     "/v1/marketplace/companies/:companyId/payroll",
     async (request) => operations.runPayroll({
-      ownerId: await actorId(app, request),
+      ownerId: await requireActorId(app, request),
       companyId: request.params.companyId,
       idempotencyKey: idempotencyKey(app, request)
     })
@@ -115,7 +106,7 @@ export async function registerBusinessOperationsRoutes(
   app.post("/v1/marketplace/shares/listings", async (request) => {
     const body = listingSchema.parse(request.body);
     return operations.createShareListing({
-      ownerId: await actorId(app, request),
+      ownerId: await requireActorId(app, request),
       ...body,
       idempotencyKey: idempotencyKey(app, request)
     });
@@ -126,7 +117,7 @@ export async function registerBusinessOperationsRoutes(
     async (request) => {
       const body = buySchema.parse(request.body);
       return operations.buyShareListing({
-        ownerId: await actorId(app, request),
+        ownerId: await requireActorId(app, request),
         listingId: request.params.listingId,
         units: body.units,
         idempotencyKey: idempotencyKey(app, request)
@@ -134,3 +125,5 @@ export async function registerBusinessOperationsRoutes(
     }
   );
 }
+
+// Tehkné Solutions

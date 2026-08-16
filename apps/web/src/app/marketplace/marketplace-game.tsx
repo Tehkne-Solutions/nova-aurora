@@ -1,13 +1,10 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useAuth } from "../auth-provider";
 import styles from "./marketplace.module.css";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
-const ALICE = "alice@nova-aurora.local";
-const BOB = "bob@nova-aurora.local";
-
-type ActorMode = "alice" | "bob";
 
 type CatalogEntry = Readonly<{
   id: string;
@@ -105,14 +102,12 @@ function key(prefix: string): string {
 
 async function request<T>(
   path: string,
-  actor: ActorMode,
   options: Readonly<{ method?: "GET" | "POST"; body?: unknown; idempotencyKey?: string }> = {}
 ): Promise<T> {
   const response = await fetch(`${API_URL}${path}`, {
     method: options.method ?? "GET",
     headers: {
       "content-type": "application/json",
-      "x-actor-email": actor === "alice" ? ALICE : BOB,
       ...(options.idempotencyKey ? { "idempotency-key": options.idempotencyKey } : {})
     },
     ...(options.body === undefined ? {} : { body: JSON.stringify(options.body) })
@@ -123,19 +118,19 @@ async function request<T>(
 }
 
 export function MarketplaceGame() {
-  const [actor, setActor] = useState<ActorMode>("alice");
+  const { identity } = useAuth();
   const [state, setState] = useState<MarketplaceState | null>(null);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("Sincronizando mercado público...");
 
   const refresh = useCallback(async () => {
     try {
-      setState(await request<MarketplaceState>("/v1/marketplace/state", actor));
-      setMessage("Mercado público sincronizado.");
+      setState(await request<MarketplaceState>("/v1/marketplace/state"));
+      setMessage("Mercado público sincronizado com sua sessão.");
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "API indisponível.");
     }
-  }, [actor]);
+  }, []);
 
   useEffect(() => { void refresh(); }, [refresh]);
 
@@ -156,25 +151,23 @@ export function MarketplaceGame() {
     () => state?.companies.find((company) => company.ownerId === state.actor.id) ?? null,
     [state]
   );
-  const openJob = state?.jobs.find((job) => job.status === "open") ?? null;
-  const openShare = state?.shareListings.find((listing) => listing.sellerId !== state.actor.id) ?? null;
 
   if (!state) return <section className={styles.loading}>{message}</section>;
 
   return (
-    <section className={styles.workspace}>
+    <section aria-label="Mercado autenticado de Nova Aurora" className={styles.workspace} data-authenticated="true">
       <div className={styles.controlbar}>
         <div>
-          <span>Operador</span>
-          <strong>{state.actor.displayName}</strong>
+          <span>Jogador autenticado</span>
+          <strong>{identity?.displayName ?? state.actor.displayName}</strong>
         </div>
         <div>
           <span>Carteira</span>
           <strong>{aurora(state.actor.balanceMinor)}</strong>
         </div>
-        <div className={styles.actorSwitch}>
-          <button disabled={busy || actor === "alice"} onClick={() => setActor("alice")}>Alice</button>
-          <button disabled={busy || actor === "bob"} onClick={() => setActor("bob")}>Bob</button>
+        <div>
+          <span>Local atual</span>
+          <strong>{state.actor.currentLocationCode}</strong>
         </div>
       </div>
 
@@ -218,7 +211,7 @@ export function MarketplaceGame() {
                 {company.catalog.length === 0 && (
                   <button disabled={busy} onClick={() => void run(
                     "Configurando vitrine pública...",
-                    () => request(`/v1/marketplace/buildings/${company.buildingId}/catalog`, actor, {
+                    () => request(`/v1/marketplace/buildings/${company.buildingId}/catalog`, {
                       method: "POST",
                       idempotencyKey: key("catalog"),
                       body: {
@@ -235,7 +228,7 @@ export function MarketplaceGame() {
                 {company.catalog.length > 0 && (
                   <button disabled={busy} onClick={() => void run(
                     "Processando demanda regional...",
-                    () => request(`/v1/marketplace/buildings/${company.buildingId}/demand-cycle`, actor, {
+                    () => request(`/v1/marketplace/buildings/${company.buildingId}/demand-cycle`, {
                       method: "POST",
                       idempotencyKey: key("demand")
                     })
@@ -243,7 +236,7 @@ export function MarketplaceGame() {
                 )}
                 <button disabled={busy} onClick={() => void run(
                   "Publicando vaga...",
-                  () => request(`/v1/marketplace/companies/${company.id}/jobs`, actor, {
+                  () => request(`/v1/marketplace/companies/${company.id}/jobs`, {
                     method: "POST",
                     idempotencyKey: key("job"),
                     body: {
@@ -259,7 +252,7 @@ export function MarketplaceGame() {
                 {company.activeEmployees > 0 && (
                   <button disabled={busy} onClick={() => void run(
                     "Liquidando folha salarial...",
-                    () => request(`/v1/marketplace/companies/${company.id}/payroll`, actor, {
+                    () => request(`/v1/marketplace/companies/${company.id}/payroll`, {
                       method: "POST",
                       idempotencyKey: key("payroll")
                     })
@@ -267,7 +260,7 @@ export function MarketplaceGame() {
                 )}
                 <button disabled={busy} onClick={() => void run(
                   "Publicando participação no mercado interno...",
-                  () => request("/v1/marketplace/shares/listings", actor, {
+                  () => request("/v1/marketplace/shares/listings", {
                     method: "POST",
                     idempotencyKey: key("shares"),
                     body: { companyId: company.id, units: 100, unitPriceMinor: 30 }
@@ -288,7 +281,7 @@ export function MarketplaceGame() {
               {job.status === "open" && job.companyId !== ownedCompany?.id && (
                 <button disabled={busy} onClick={() => void run(
                   "Aceitando vínculo profissional...",
-                  () => request(`/v1/marketplace/jobs/${job.id}/accept`, actor, {
+                  () => request(`/v1/marketplace/jobs/${job.id}/accept`, {
                     method: "POST",
                     idempotencyKey: key("accept-job")
                   })
@@ -314,7 +307,7 @@ export function MarketplaceGame() {
               {listing.sellerId !== state.actor.id && (
                 <button disabled={busy} onClick={() => void run(
                   "Comprando participação interna...",
-                  () => request(`/v1/marketplace/shares/listings/${listing.id}/buy`, actor, {
+                  () => request(`/v1/marketplace/shares/listings/${listing.id}/buy`, {
                     method: "POST",
                     idempotencyKey: key("buy-share"),
                     body: { units: Math.min(10, listing.unitsRemaining) }
@@ -331,7 +324,9 @@ export function MarketplaceGame() {
         </article>
       </section>
 
-      {!openJob && !openShare && <p className={styles.hint}>Use Alice para publicar operações e Bob para aceitar vagas ou comprar participações.</p>}
+      <p className={styles.hint}>As ações disponíveis refletem sua empresa, seus vínculos e suas posições na sessão autenticada.</p>
     </section>
   );
 }
+
+// Tehkné Solutions

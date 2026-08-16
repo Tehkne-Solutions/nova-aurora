@@ -1,15 +1,10 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useAuth } from "../auth-provider";
 import styles from "./business.module.css";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
-const ACTORS = {
-  alice: "alice@nova-aurora.local",
-  bob: "bob@nova-aurora.local"
-} as const;
-
-type ActorCode = keyof typeof ACTORS;
 
 type Building = Readonly<{
   id: string;
@@ -111,7 +106,6 @@ function operationKey(prefix: string): string {
 
 async function api<T>(
   path: string,
-  actor: ActorCode,
   options: Readonly<{
     method?: "GET" | "POST";
     body?: unknown;
@@ -122,7 +116,6 @@ async function api<T>(
     method: options.method ?? "GET",
     headers: {
       "content-type": "application/json",
-      "x-actor-email": ACTORS[actor],
       ...(options.idempotencyKey
         ? { "idempotency-key": options.idempotencyKey }
         : {})
@@ -139,33 +132,27 @@ async function api<T>(
 }
 
 function buildingDefaults(plot: Plot): Readonly<{ type: string; name: string }> {
-  if (plot.propertyType === "industrial") {
-    return { type: "workshop", name: "Oficina Nova Aurora" };
-  }
-  if (plot.propertyType === "agricultural") {
-    return { type: "mill", name: "Moinho Vale Verde" };
-  }
-  if (plot.propertyType === "creative") {
-    return { type: "studio", name: "Estúdio Aurora" };
-  }
+  if (plot.propertyType === "industrial") return { type: "workshop", name: "Oficina Nova Aurora" };
+  if (plot.propertyType === "agricultural") return { type: "mill", name: "Moinho Vale Verde" };
+  if (plot.propertyType === "creative") return { type: "studio", name: "Estúdio Aurora" };
   return { type: "bakery", name: "Padaria Aurora" };
 }
 
 export function BusinessGame() {
-  const [actor, setActor] = useState<ActorCode>("alice");
+  const { identity } = useAuth();
   const [state, setState] = useState<BusinessState | null>(null);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("Carregando empresas de Nova Aurora...");
 
   const refresh = useCallback(async () => {
     try {
-      const next = await api<BusinessState>("/v1/business/state", actor);
+      const next = await api<BusinessState>("/v1/business/state");
       setState(next);
-      setMessage("Dados empresariais sincronizados.");
+      setMessage("Dados empresariais sincronizados com sua sessão.");
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "API indisponível.");
     }
-  }, [actor]);
+  }, []);
 
   useEffect(() => {
     void refresh();
@@ -198,7 +185,7 @@ export function BusinessGame() {
 
   const move = (locationCode: string) => run(
     "Viajando até o endereço empresarial...",
-    () => api("/v1/city/move", actor, {
+    () => api("/v1/city/move", {
       method: "POST",
       body: { locationCode },
       idempotencyKey: operationKey("business-move")
@@ -206,22 +193,13 @@ export function BusinessGame() {
   );
 
   return (
-    <div className={styles.workspace}>
+    <div aria-label="Economia empresarial autenticada de Nova Aurora" className={styles.workspace} data-authenticated="true">
       <section className={styles.commandPanel}>
-        <div className={styles.actorSwitch} aria-label="Selecionar personagem">
-          {(Object.keys(ACTORS) as ActorCode[]).map((code) => (
-            <button
-              className={actor === code ? styles.activeActor : ""}
-              disabled={busy}
-              key={code}
-              onClick={() => setActor(code)}
-            >
-              {code === "alice" ? "Alice · Fundadora" : "Bob · Investidor"}
-            </button>
-          ))}
-        </div>
-
         <div className={styles.metrics}>
+          <article>
+            <span>Jogador autenticado</span>
+            <strong>{identity?.displayName ?? state.actor.displayName}</strong>
+          </article>
           <article>
             <span>Carteira pessoal</span>
             <strong>{money(state.actor.balanceMinor)}</strong>
@@ -278,23 +256,19 @@ export function BusinessGame() {
                 {plot.building && (
                   <div className={styles.buildingInfo}>
                     <strong>{plot.building.name}</strong>
-                    <span>
-                      Condição {plot.building.condition}% · capacidade {plot.building.capacity}
-                    </span>
+                    <span>Condição {plot.building.condition}% · capacidade {plot.building.capacity}</span>
                   </div>
                 )}
                 <div className={styles.actions}>
                   {!atLocation && (
-                    <button disabled={busy} onClick={() => void move(plot.locationCode)}>
-                      Viajar
-                    </button>
+                    <button disabled={busy} onClick={() => void move(plot.locationCode)}>Viajar</button>
                   )}
                   {atLocation && plot.status === "available" && (
                     <button
                       disabled={busy}
                       onClick={() => void run(
                         "Adquirindo concessão do terreno...",
-                        () => api(`/v1/properties/${plot.code}/acquire`, actor, {
+                        () => api(`/v1/properties/${plot.code}/acquire`, {
                           method: "POST",
                           idempotencyKey: operationKey("acquire-plot")
                         })
@@ -308,12 +282,9 @@ export function BusinessGame() {
                       disabled={busy}
                       onClick={() => void run(
                         "Construindo estabelecimento...",
-                        () => api(`/v1/properties/${plot.code}/buildings`, actor, {
+                        () => api(`/v1/properties/${plot.code}/buildings`, {
                           method: "POST",
-                          body: {
-                            buildingType: defaults.type,
-                            name: defaults.name
-                          },
+                          body: { buildingType: defaults.type, name: defaults.name },
                           idempotencyKey: operationKey("construct-building")
                         })
                       )}
@@ -327,7 +298,7 @@ export function BusinessGame() {
                       disabled={busy}
                       onClick={() => void run(
                         "Registrando visita ao estabelecimento...",
-                        () => api(`/v1/properties/${plot.code}/visit`, actor, {
+                        () => api(`/v1/properties/${plot.code}/visit`, {
                           method: "POST",
                           idempotencyKey: operationKey("property-visit")
                         })
@@ -342,14 +313,10 @@ export function BusinessGame() {
                         disabled={busy}
                         onClick={() => void run(
                           "Executando ciclo operacional...",
-                          () => api(
-                            `/v1/business/buildings/${plot.building?.id}/operate`,
-                            actor,
-                            {
-                              method: "POST",
-                              idempotencyKey: operationKey("operate-business")
-                            }
-                          )
+                          () => api(`/v1/business/buildings/${plot.building?.id}/operate`, {
+                            method: "POST",
+                            idempotencyKey: operationKey("operate-business")
+                          })
                         )}
                       >
                         Operar negócio
@@ -359,14 +326,10 @@ export function BusinessGame() {
                         disabled={busy || plot.building.level >= plot.maxLevel}
                         onClick={() => void run(
                           "Expandindo o estabelecimento...",
-                          () => api(
-                            `/v1/business/buildings/${plot.building?.id}/upgrade`,
-                            actor,
-                            {
-                              method: "POST",
-                              idempotencyKey: operationKey("upgrade-building")
-                            }
-                          )
+                          () => api(`/v1/business/buildings/${plot.building?.id}/upgrade`, {
+                            method: "POST",
+                            idempotencyKey: operationKey("upgrade-building")
+                          })
                         )}
                       >
                         Melhorar estrutura
@@ -374,9 +337,7 @@ export function BusinessGame() {
                     </>
                   )}
                 </div>
-                {plot.ownerCompanyName && (
-                  <p className={styles.owner}>Operado por {plot.ownerCompanyName}</p>
-                )}
+                {plot.ownerCompanyName && <p className={styles.owner}>Operado por {plot.ownerCompanyName}</p>}
               </article>
             );
           })}
@@ -392,15 +353,15 @@ export function BusinessGame() {
             </div>
           </div>
           <p className={styles.notice}>
-            Estas unidades são internas, não conversíveis e não representam
-            valores mobiliários, promessa de renda ou token blockchain.
+            Estas unidades são internas, não conversíveis e não representam valores mobiliários,
+            promessa de renda ou token blockchain.
           </p>
           {state.company.isOwner && (
             <button
               disabled={busy}
               onClick={() => void run(
                 "Publicando 300 unidades virtuais...",
-                () => api("/v1/business/share-offerings", actor, {
+                () => api("/v1/business/share-offerings", {
                   method: "POST",
                   body: { units: 300, unitPriceMinor: 20 },
                   idempotencyKey: operationKey("share-offering")
@@ -415,24 +376,18 @@ export function BusinessGame() {
               <article key={offering.id}>
                 <div>
                   <strong>{offering.companyName}</strong>
-                  <span>
-                    {offering.unitsRemaining} unidades · {money(offering.unitPriceMinor)} cada
-                  </span>
+                  <span>{offering.unitsRemaining} unidades · {money(offering.unitPriceMinor)} cada</span>
                 </div>
                 {offering.ownerId !== state.actor.id && (
                   <button
                     disabled={busy || offering.unitsRemaining < 100}
                     onClick={() => void run(
                       "Liquidando participação virtual...",
-                      () => api(
-                        `/v1/business/share-offerings/${offering.id}/invest`,
-                        actor,
-                        {
-                          method: "POST",
-                          body: { units: 100 },
-                          idempotencyKey: operationKey("investment")
-                        }
-                      )
+                      () => api(`/v1/business/share-offerings/${offering.id}/invest`, {
+                        method: "POST",
+                        body: { units: 100 },
+                        idempotencyKey: operationKey("investment")
+                      })
                     )}
                   >
                     Investir em 1%
@@ -456,12 +411,11 @@ export function BusinessGame() {
               <article key={position.companyId}>
                 <div>
                   <strong>{position.companyName}</strong>
-                  <span>
-                    {position.units} unidades · {position.ownershipPercent.toLocaleString("pt-BR")}%
-                  </span>
+                  <span>{position.units} unidades · {position.ownershipPercent.toLocaleString("pt-BR")}%</span>
                 </div>
               </article>
             ))}
+            {state.portfolio.length === 0 && <p>Nenhuma posição de investimento.</p>}
           </div>
           <div className={styles.distributionTotal}>
             <span>Resultados recebidos</span>
@@ -493,14 +447,10 @@ export function BusinessGame() {
                   disabled={busy}
                   onClick={() => void run(
                     "Distribuindo parte do resultado...",
-                    () => api(
-                      `/v1/business/cycles/${cycle.id}/distribute`,
-                      actor,
-                      {
-                        method: "POST",
-                        idempotencyKey: operationKey("distribution")
-                      }
-                    )
+                    () => api(`/v1/business/cycles/${cycle.id}/distribute`, {
+                      method: "POST",
+                      idempotencyKey: operationKey("distribution")
+                    })
                   )}
                 >
                   Distribuir 40% do resultado
@@ -514,3 +464,5 @@ export function BusinessGame() {
     </div>
   );
 }
+
+// Tehkné Solutions

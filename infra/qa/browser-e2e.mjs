@@ -139,6 +139,24 @@ async function waitForHeading(selector, expected, context, timeoutMs = 15_000) {
   }, timeoutMs);
 }
 
+async function waitForAuthenticatedSurface(label, context, timeoutMs = 20_000) {
+  return retry(async () => {
+    const state = await evaluate(`(() => {
+      const node = document.querySelector(${JSON.stringify(`[aria-label="${label}"][data-authenticated="true"]`)});
+      return {
+        found: Boolean(node),
+        text: node?.textContent?.trim() || '',
+        live: document.querySelector('[aria-live=polite]')?.textContent?.trim() || ''
+      };
+    })()`);
+    if (!state.found) throw new Error(`${context} ainda não materializou a superfície autenticada.`);
+    if (/inválida|expirada|obrigatória|indisponível|falhou/i.test(String(state.text))) {
+      throw new Error(`${context} exibiu falha de autenticação/operação: ${state.text}`);
+    }
+    return state;
+  }, timeoutMs);
+}
+
 async function clickHubTab(label) {
   const clicked = await evaluate(`(() => {
     const navigation = document.querySelector('nav[aria-label="Áreas do hub social"]');
@@ -176,7 +194,15 @@ function auditExpression() {
   })()`;
 }
 
-const report = { pages: [], login: null, socialHub: null, creatorStudio: null, ugcStudio: null, exceptions };
+const report = {
+  pages: [],
+  login: null,
+  socialHub: null,
+  creatorStudio: null,
+  ugcStudio: null,
+  economySurfaces: null,
+  exceptions
+};
 await command("Page.enable");
 await command("Runtime.enable");
 
@@ -219,6 +245,8 @@ for (const path of [
   "/trust",
   "/feedback",
   "/beta-insights",
+  "/business",
+  "/marketplace",
   "/community",
   "/community/social",
   "/community/social/studio",
@@ -226,6 +254,22 @@ for (const path of [
 ]) {
   await navigate(path);
 
+  if (path === "/business") {
+    await waitForHeading("h1", "Transforme um endereço", "Economia empresarial");
+    const state = await waitForAuthenticatedSurface(
+      "Economia empresarial autenticada de Nova Aurora",
+      "Economia empresarial"
+    );
+    report.economySurfaces = { ...(report.economySurfaces ?? {}), business: { ready: true, text: state.text.slice(0, 240) } };
+  }
+  if (path === "/marketplace") {
+    await waitForHeading("h1", "Empresas abertas", "Marketplace público");
+    const state = await waitForAuthenticatedSurface(
+      "Mercado autenticado de Nova Aurora",
+      "Marketplace público"
+    );
+    report.economySurfaces = { ...(report.economySurfaces ?? {}), marketplace: { ready: true, text: state.text.slice(0, 240) } };
+  }
   if (path === "/community/social") {
     await waitForHeading("h1", "Hub Social", "Hub Social");
   }
@@ -294,6 +338,9 @@ const finalReport = { ...report, exceptions: [...exceptions], issues };
 await writeFile(reportFile, JSON.stringify(finalReport, null, 2));
 if (issues.length > 0) throw new Error(`Falhas de acessibilidade: ${issues.join("; ")}`);
 if (exceptions.length > 0) throw new Error(`Exceções no navegador: ${exceptions.join("; ")}`);
+if (!report.economySurfaces?.business?.ready || !report.economySurfaces?.marketplace?.ready) {
+  throw new Error("Superfícies econômicas autenticadas não produziram evidência completa.");
+}
 
 socket.close();
 child.kill("SIGTERM");
@@ -314,5 +361,7 @@ console.log(JSON.stringify({
   socialHubTabs: report.socialHub?.tabs.length ?? 0,
   creatorStudioReady: report.creatorStudio?.ready ?? false,
   ugcStudioReady: report.ugcStudio?.ready ?? false,
+  authenticatedBusinessReady: report.economySurfaces?.business?.ready ?? false,
+  authenticatedMarketplaceReady: report.economySurfaces?.marketplace?.ready ?? false,
   signature: "Tehkné Solutions"
 }));
