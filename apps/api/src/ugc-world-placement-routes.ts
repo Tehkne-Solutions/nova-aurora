@@ -10,6 +10,12 @@ const GLB_CONTENT_TYPE = "model/gltf-binary" as const;
 const RENDERABLE_CONTENT_TYPES = [...IMAGE_CONTENT_TYPES, GLB_CONTENT_TYPE] as const;
 const ANIMATION_STATES = ["idle", "open", "close", "activate", "deactivate", "spin"] as const;
 const INTERACTION_SCOPES = ["owner_only", "authenticated"] as const;
+const INTERACTION_CAPABILITIES = {
+  anonymousVisitorMutationEnabled: false,
+  authenticatedVisitorMutationEnabled: true,
+  authenticatedEndpoint: "/v1/ugc/world/placements/:placementId/interactions",
+  cooldownMs: 2000
+} as const;
 
 type RenderableContentType = typeof RENDERABLE_CONTENT_TYPES[number];
 type RenderMode = "image-billboard-v1" | "glb-model-v1";
@@ -141,6 +147,7 @@ export async function registerUgcWorldPlacementRoutes(app: FastifyInstance): Pro
       animationStates: ANIMATION_STATES,
       interactionScopes: INTERACTION_SCOPES,
       visitorMutationEnabled: false,
+      interactionCapabilities: INTERACTION_CAPABILITIES,
       signature: "Tehkné Solutions"
     };
   });
@@ -169,6 +176,7 @@ export async function registerUgcWorldPlacementRoutes(app: FastifyInstance): Pro
       animationStates: ANIMATION_STATES,
       interactionScopes: INTERACTION_SCOPES,
       visitorMutationEnabled: false,
+      interactionCapabilities: INTERACTION_CAPABILITIES,
       signature: "Tehkné Solutions"
     };
   });
@@ -254,6 +262,7 @@ export async function registerUgcWorldPlacementRoutes(app: FastifyInstance): Pro
       animationStates: ANIMATION_STATES,
       interactionScopes: INTERACTION_SCOPES,
       visitorMutationEnabled: false,
+      interactionCapabilities: INTERACTION_CAPABILITIES,
       signature: "Tehkné Solutions"
     };
   });
@@ -305,6 +314,7 @@ export async function registerUgcWorldPlacementRoutes(app: FastifyInstance): Pro
       placementId: String(row.id),
       interactionScope: normalizeInteractionScope(row.interaction_scope),
       visitorMutationEnabled: false,
+      interactionCapabilities: INTERACTION_CAPABILITIES,
       interactionScopes: INTERACTION_SCOPES,
       updatedAt: new Date(String(row.updated_at)).toISOString(),
       signature: "Tehkné Solutions"
