@@ -226,7 +226,8 @@ const placementResponse = await requireJson("/v1/ugc/world/placements", {
     offsetX: -28,
     offsetY: -88,
     scalePercent: 125,
-    rotationYDegrees: 135
+    rotationYDegrees: 135,
+    animationState: "idle"
   })
 });
 const placement = placementResponse?.placement;
@@ -236,6 +237,7 @@ if (placement?.renderMode !== "glb-model-v1" || placement?.contentType !== "mode
   throw new Error("POST do placement GLB não despachou glb-model-v1.");
 }
 if (placement?.rotationYDegrees !== 135) throw new Error("POST do placement GLB não preservou rotação de 135 graus.");
+if (placement?.animationState !== "idle") throw new Error("POST do placement GLB não preservou estado inicial idle.");
 
 const publicPlacements = await requireJson(`/v1/ugc/world/placements?locationCode=${encodeURIComponent(targetLocation.code)}&limit=200`);
 if (!Array.isArray(publicPlacements?.renderModes) || !publicPlacements.renderModes.includes("glb-model-v1")) {
@@ -248,11 +250,34 @@ if (!visible || visible.sha256 !== glbSha || visible.renderMode !== "glb-model-v
 if (visible.assetPath !== `/v1/ugc/assets/files/${upload.id}`) {
   throw new Error("Placement GLB não preservou caminho público canônico.");
 }
+if (visible.animationState !== "idle") throw new Error("Runtime público não expôs estado inicial idle.");
 
 const ownPlacements = await requireJson("/v1/ugc/world/placements/me", { headers: authHeaders });
 const own = ownPlacements?.placements?.find((entry) => entry.id === placementId);
 if (!own || own.renderMode !== "glb-model-v1" || own.contentType !== "model/gltf-binary") {
   throw new Error("Inventário autenticado não preservou placement GLB.");
+}
+if (own.animationState !== "idle") throw new Error("Inventário autenticado não preservou estado inicial idle.");
+
+const stateTransition = await requireJson(`/v1/ugc/world/placements/${placementId}/animation-state`, {
+  method: "PATCH",
+  headers: { ...authHeaders, "content-type": "application/json" },
+  body: JSON.stringify({ animationState: "spin" })
+});
+if (stateTransition?.placementId !== placementId || stateTransition?.animationState !== "spin") {
+  throw new Error("PATCH do placement GLB não confirmou transição idle → spin.");
+}
+
+const transitionedPublicPlacements = await requireJson(`/v1/ugc/world/placements?locationCode=${encodeURIComponent(targetLocation.code)}&limit=200`);
+const transitionedVisible = transitionedPublicPlacements?.placements?.find((entry) => entry.id === placementId);
+if (!transitionedVisible || transitionedVisible.animationState !== "spin") {
+  throw new Error("Leitura pública não refletiu o estado spin persistido.");
+}
+
+const transitionedOwnPlacements = await requireJson("/v1/ugc/world/placements/me", { headers: authHeaders });
+const transitionedOwn = transitionedOwnPlacements?.placements?.find((entry) => entry.id === placementId);
+if (!transitionedOwn || transitionedOwn.animationState !== "spin") {
+  throw new Error("Inventário autenticado não refletiu o estado spin persistido.");
 }
 
 const removal = await requireJson(`/v1/ugc/world/placements/${placementId}`, {
@@ -288,9 +313,14 @@ const report = {
   worldPlacementLocationCode: targetLocation.code,
   renderMode: "glb-model-v1",
   rotationYDegrees: 135,
+  initialAnimationState: "idle",
+  transitionedAnimationState: "spin",
+  ownerStatePatchSucceeded: true,
+  publicStateReadbackSucceeded: true,
+  ownerStateReadbackSucceeded: true,
   cleanGlbWorldPlacementVisible: true,
   removedGlbPlacementNotPublic: true,
-  rendererContract: "first-party-webgl-pbr-normal-map-v7",
+  rendererContract: "first-party-webgl-pbr-node-animation-v10",
   signature: "Tehkné Solutions"
 };
 await writeFile(reportFile, JSON.stringify(report, null, 2));
