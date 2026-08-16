@@ -36,10 +36,10 @@ test("authenticated business world exposes session-bound state", () => {
 });
 
 test("auth provider remains the single bearer injection boundary for economy fetches", () => {
-  assert.match(authProvider, /headers\.set\("authorization", `Bearer \$\{token\}`\)/);
+  assert.match(authProvider, /headers\.set\("authorization",`Bearer \$\{activeToken\}`\)/);
   assert.match(authProvider, /headers\.delete\("x-actor-email"\)/);
-  assert.match(authProvider, /headers\.set\("x-actor-context", legacyActor\)/);
-  assert.match(authProvider, /identity\.roles\.includes\("platform-admin"\)/);
+  assert.match(authProvider, /headers\.set\("x-actor-context",legacyActor\)/);
+  assert.match(authProvider, /activeIdentity\.roles\.includes\("platform-admin"\)/);
 });
 
 // Tehkné Solutions
