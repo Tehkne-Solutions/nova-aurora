@@ -32,12 +32,30 @@ async function post(tx: Tx, input: { key: string; type: string; entries: { code:
   return id;
 }
 
-export async function snapshot(){
+export async function snapshot(ownerId: string){
   const sql=db();
-  const balances=await sql`SELECT a.code,COALESCE(SUM(e.amount_minor),0)::bigint value FROM ledger_accounts a LEFT JOIN ledger_entries e ON e.account_id=a.id GROUP BY a.id ORDER BY a.code`;
-  const inventory=await sql`SELECT u.email,i.code,SUM(l.quantity_minor-l.reserved_minor)::bigint quantity FROM inventory_lots l JOIN users u ON u.id=l.owner_id JOIN items i ON i.id=l.item_id GROUP BY u.email,i.code`;
-  const orders=await sql`SELECT o.id,u.email seller,i.code item,o.remaining_minor,o.unit_price_minor,o.status FROM market_orders o JOIN users u ON u.id=o.owner_id JOIN items i ON i.id=o.item_id ORDER BY o.created_at DESC`;
-  return { adapter:"postgres", balances, inventory, orders };
+  const balances=await sql`
+    SELECT a.code,COALESCE(SUM(e.amount_minor),0)::bigint value
+    FROM ledger_accounts a
+    LEFT JOIN ledger_entries e ON e.account_id=a.id
+    WHERE a.owner_id=${ownerId}::uuid
+    GROUP BY a.id ORDER BY a.code
+  `;
+  const inventory=await sql`
+    SELECT i.code,SUM(l.quantity_minor-l.reserved_minor)::bigint quantity
+    FROM inventory_lots l
+    JOIN items i ON i.id=l.item_id
+    WHERE l.owner_id=${ownerId}::uuid
+    GROUP BY i.code ORDER BY i.code
+  `;
+  const orders=await sql`
+    SELECT o.id,o.side,i.code item,o.remaining_minor,o.unit_price_minor,o.status
+    FROM market_orders o
+    JOIN items i ON i.id=o.item_id
+    WHERE o.owner_id=${ownerId}::uuid
+    ORDER BY o.created_at DESC
+  `;
+  return { adapter:"postgres", balances, inventory, orders, signature:"Tehkné Solutions" };
 }
 
 export async function verticalSlice(key:string){
@@ -61,3 +79,5 @@ export async function verticalSlice(key:string){
     return response;
   });
 }
+
+// Tehkné Solutions
