@@ -26,6 +26,10 @@ function normalizeAnimationState(value: unknown): UgcRealtimeAnimationState | nu
     : null;
 }
 
+function documentIsHidden(): boolean {
+  return document.visibilityState === "hidden";
+}
+
 export function useUgcWorldRealtime(
   locationCode: string,
   onPlacementState: PlacementStateHandler
@@ -51,13 +55,13 @@ export function useUgcWorldRealtime(
       if (socket?.readyState !== WebSocket.OPEN) return;
       socket.send(JSON.stringify({
         eventType: "presence.heartbeat",
-        status: document.visibilityState === "hidden" ? "away" : "online",
+        status: documentIsHidden() ? "away" : "online",
         locationCode: locationRef.current
       }));
     }
 
     function scheduleReconnect(): void {
-      if (disposed || reconnectTimer !== null || document.visibilityState === "hidden") return;
+      if (disposed || reconnectTimer !== null || documentIsHidden()) return;
       const delay = Math.min(
         REALTIME_RECONNECT_MAX_MS,
         REALTIME_RECONNECT_BASE_MS * (2 ** Math.min(reconnectAttempt, 4))
@@ -83,7 +87,7 @@ export function useUgcWorldRealtime(
     }
 
     async function connect(): Promise<void> {
-      if (disposed || document.visibilityState === "hidden") return;
+      if (disposed || documentIsHidden()) return;
       try {
         const ticketResponse = await fetch(`${API_URL}/v1/auth/realtime-ticket`, {
           method: "POST"
@@ -93,7 +97,7 @@ export function useUgcWorldRealtime(
         if (typeof ticketPayload.ticket !== "string" || !ticketPayload.ticket) {
           throw new Error("Realtime ticket invalid");
         }
-        if (disposed || document.visibilityState === "hidden") return;
+        if (disposed || documentIsHidden()) return;
 
         const socketUrl = API_URL.replace(/^http/, "ws")
           + `/v1/realtime?ticket=${encodeURIComponent(ticketPayload.ticket)}`;
@@ -120,7 +124,7 @@ export function useUgcWorldRealtime(
     }
 
     function handleVisibilityChange(): void {
-      if (document.visibilityState === "hidden") {
+      if (documentIsHidden()) {
         socket?.close(1000, "Página oculta");
         return;
       }
