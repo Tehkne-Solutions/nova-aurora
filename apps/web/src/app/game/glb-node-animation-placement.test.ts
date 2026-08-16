@@ -4,10 +4,14 @@ import { test } from "node:test";
 
 const source = readFileSync(new URL("./glb-node-animation-placement.tsx", import.meta.url), "utf8");
 const canonical = readFileSync(new URL("./glb-placement.ts", import.meta.url), "utf8");
+const stateful = readFileSync(new URL("./glb-stateful-placement.tsx", import.meta.url), "utf8");
 
-test("canonical GLB entrypoint activates node animation v10", () => {
-  assert.match(canonical, /export \{ GlbPlacement \} from "\.\/glb-node-animation-placement";/);
+test("canonical GLB entrypoint routes persisted state into node animation v10", () => {
+  assert.match(canonical, /export \{ GlbPlacement \} from "\.\/glb-stateful-placement";/);
   assert.doesNotMatch(canonical, /glb-alpha-blend-placement/);
+  assert.match(stateful, /GlbPlacement as CertifiedGlbPlacement/);
+  assert.match(stateful, /from "\.\/glb-node-animation-placement"/);
+  assert.match(stateful, /prepareGlbForAnimationState\(buffer, normalizedState\)/);
   assert.match(source, /data-glb-renderer="first-party-webgl-pbr-node-animation-v10"/);
 });
 
