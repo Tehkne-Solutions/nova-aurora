@@ -27,4 +27,15 @@ test("placement API validates, persists, selects and serializes animationState",
   assert.match(routeSource, /animationStates: ANIMATION_STATES/);
 });
 
+test("owner may transition only an active clean GLB placement through canonical states", () => {
+  assert.match(routeSource, /const updateAnimationStateSchema = z\.object\(\{\s*animationState: z\.enum\(ANIMATION_STATES\)/s);
+  assert.match(routeSource, /\/v1\/ugc\/world\/placements\/:placementId\/animation-state/);
+  assert.match(routeSource, /placement\.owner_user_id=\$\{actor\.userId\}::uuid/);
+  assert.match(routeSource, /placement\.status='active'/);
+  assert.match(routeSource, /asset\.status='clean'/);
+  assert.match(routeSource, /asset\.content_type='model\/gltf-binary'/);
+  assert.match(routeSource, /SET animation_state=\$\{body\.animationState\},updated_at=now\(\)/);
+  assert.match(routeSource, /Placement GLB ativo e controlável não encontrado/);
+});
+
 // Tehkné Solutions
