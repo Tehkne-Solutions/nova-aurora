@@ -1,9 +1,10 @@
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { z } from "zod";
-import { BusinessOperationsService } from "@nova-aurora/database";
+import { BusinessOperationsService, db } from "@nova-aurora/database";
 import { requireActorId } from "./auth-context.js";
 
 const operations = new BusinessOperationsService();
+const economySql = db();
 
 function idempotencyKey(app: FastifyInstance, request: FastifyRequest): string {
   const key = request.headers["idempotency-key"];
@@ -44,6 +45,61 @@ const buySchema = z.object({
 export async function registerBusinessOperationsRoutes(
   app: FastifyInstance
 ): Promise<void> {
+  app.get("/v1/market/catalog", async () => {
+    const rows = await economySql`
+      SELECT code,name,base_price_minor
+      FROM items
+      ORDER BY name,code
+    `;
+    return {
+      items: rows.map((row) => ({
+        code: String(row.code),
+        name: String(row.name),
+        basePriceMinor: Number(row.base_price_minor)
+      })),
+      signature: "Tehkné Solutions"
+    };
+  });
+
+  app.get("/v1/production/recipes", async () => {
+    const recipes = await economySql`
+      SELECT recipe.id,recipe.code,recipe.name,recipe.output_quantity_minor,
+        recipe.duration_seconds,recipe.energy_cost_minor,
+        item.code output_item_code,item.name output_item_name
+      FROM production_recipes recipe
+      JOIN items item ON item.id=recipe.output_item_id
+      WHERE recipe.active=true
+      ORDER BY recipe.name,recipe.code
+    `;
+    const inputs = await economySql`
+      SELECT input.recipe_id,input.quantity_minor,item.code item_code,item.name item_name
+      FROM production_recipe_inputs input
+      JOIN items item ON item.id=input.item_id
+      JOIN production_recipes recipe ON recipe.id=input.recipe_id
+      WHERE recipe.active=true
+      ORDER BY recipe_id,item.name,item.code
+    `;
+    return {
+      recipes: recipes.map((recipe) => ({
+        code: String(recipe.code),
+        name: String(recipe.name),
+        outputItemCode: String(recipe.output_item_code),
+        outputItemName: String(recipe.output_item_name),
+        outputQuantityMinor: Number(recipe.output_quantity_minor),
+        durationSeconds: Number(recipe.duration_seconds),
+        energyCostMinor: Number(recipe.energy_cost_minor),
+        inputs: inputs
+          .filter((input) => String(input.recipe_id) === String(recipe.id))
+          .map((input) => ({
+            itemCode: String(input.item_code),
+            itemName: String(input.item_name),
+            quantityMinor: Number(input.quantity_minor)
+          }))
+      })),
+      signature: "Tehkné Solutions"
+    };
+  });
+
   app.get("/v1/marketplace/state", async (request) =>
     operations.state(await requireActorId(app, request))
   );
