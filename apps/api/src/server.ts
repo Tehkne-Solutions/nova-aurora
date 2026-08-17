@@ -25,6 +25,7 @@ import {
 } from "./regional-business-management-routes.js";
 import { registerSecurity } from "./security.js";
 import { registerUgcWorldInteractionRoutes } from "./ugc-world-interaction-routes.js";
+import { registerWorldEconomyRoutes } from "./world-economy-routes.js";
 
 function requestId(request: { headers: Record<string, string | string[] | undefined> }): string {
   const supplied = request.headers["x-request-id"];
@@ -122,6 +123,7 @@ await registerReleaseRoutes(app);
 await registerRealtime(app);
 await registerCityRoutes(app);
 await registerGameplayRoutes(app);
+await registerWorldEconomyRoutes(app);
 await registerPropertyBusinessRoutes(app);
 await registerBusinessOperationsRoutes(app);
 await registerRegionalBusinessManagementRoutes(app);
@@ -171,6 +173,7 @@ app.get("/health", async () => ({
   production: "bullmq-delayed",
   cityGameplay: "persistent",
   gameplayExperience: "harvest-minigame",
+  worldEconomy: "location-aware",
   propertyBusiness: "plots-buildings-equity-distributions",
   publicMarketplace: "demand-employment-reputation-secondary-shares",
   regionalManagement: "stock-b2b-campaigns-goals-team-district-metrics",
