@@ -59,6 +59,18 @@ export type WorldBusinessCatalogEntry = Readonly<{
   capacityPerCycle: number;
 }>;
 
+export type WorldBusinessCampaign = Readonly<{
+  id: string;
+  name: string;
+  channel: "local" | "social" | "outdoor" | "influencer";
+  budgetMinor: number;
+  visitorBoostPct: number;
+  conversions: number;
+  attributedRevenueMinor: number;
+  endsAt: string;
+  worldPlacement: boolean;
+}>;
+
 export type WorldLocalBusiness = Readonly<{
   buildingId: string;
   plotCode: string;
@@ -78,6 +90,7 @@ export type WorldLocalBusiness = Readonly<{
   recentCustomers: number;
   recentRevenueMinor: number;
   catalog: readonly WorldBusinessCatalogEntry[];
+  activeCampaigns: readonly WorldBusinessCampaign[];
 }>;
 
 export type WorldEconomyContext = Readonly<{
