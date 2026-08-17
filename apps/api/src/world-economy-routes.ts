@@ -1,10 +1,17 @@
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { z } from "zod";
-import { db, MarketProductionService } from "@nova-aurora/database";
+import {
+  BusinessOperationsService,
+  db,
+  MarketProductionService,
+  PropertyBusinessService
+} from "@nova-aurora/database";
 import { requireActorId } from "./auth-context.js";
 import { enqueueProductionCompletion } from "./queue.js";
 
 const economy = new MarketProductionService();
+const businessOperations = new BusinessOperationsService();
+const propertyBusiness = new PropertyBusinessService();
 const sql = db();
 
 const WORLD_RECIPE_LOCATIONS = new Map<string, string>([
@@ -60,6 +67,122 @@ async function assertLocation(
   }
 }
 
+async function localBusinesses(locationCode: string) {
+  const [buildingRows, catalogRows] = await Promise.all([
+    sql`
+      SELECT building.id,building.name,building.building_type,building.level,
+        building.condition,building.capacity,building.status,
+        plot.code plot_code,company.id company_id,company.name company_name,
+        company.owner_id,owner.display_name owner_name,
+        COALESCE(reputation.score,50)::integer reputation_score,
+        COALESCE(reputation.review_count,0)::integer review_count,
+        COALESCE((
+          SELECT COUNT(*) FROM property_visits visit
+          WHERE visit.plot_id=plot.id AND visit.visited_at>=now()-interval '7 days'
+        ),0)::integer recent_world_visits,
+        COALESCE((
+          SELECT SUM(cycle.visitors) FROM business_demand_cycles cycle
+          WHERE cycle.building_id=building.id AND cycle.created_at>=now()-interval '7 days'
+        ),0)::integer recent_demand_visitors,
+        COALESCE((
+          SELECT SUM(cycle.customers) FROM business_demand_cycles cycle
+          WHERE cycle.building_id=building.id AND cycle.created_at>=now()-interval '7 days'
+        ),0)::integer recent_customers,
+        COALESCE((
+          SELECT SUM(cycle.gross_revenue_minor) FROM business_demand_cycles cycle
+          WHERE cycle.building_id=building.id AND cycle.created_at>=now()-interval '7 days'
+        ),0)::bigint recent_revenue_minor
+      FROM property_buildings building
+      JOIN property_plots plot ON plot.id=building.plot_id
+      JOIN city_locations location ON location.id=plot.location_id
+      JOIN companies company ON company.id=building.company_id
+      JOIN users owner ON owner.id=company.owner_id
+      LEFT JOIN company_reputation reputation ON reputation.company_id=company.id
+      WHERE location.code=${locationCode} AND building.status='active'
+      ORDER BY building.name,building.id
+    `,
+    sql`
+      SELECT catalog.id,catalog.building_id,catalog.code,catalog.title,
+        catalog.description,catalog.category,catalog.unit_price_minor,
+        catalog.capacity_per_cycle
+      FROM business_catalog_entries catalog
+      JOIN property_buildings building ON building.id=catalog.building_id
+      JOIN property_plots plot ON plot.id=building.plot_id
+      JOIN city_locations location ON location.id=plot.location_id
+      WHERE location.code=${locationCode} AND catalog.status='active'
+      ORDER BY catalog.title,catalog.id
+    `
+  ]);
+
+  const catalogByBuilding = new Map<string, Array<Readonly<{
+    id: string;
+    code: string;
+    title: string;
+    description: string;
+    category: string;
+    unitPriceMinor: number;
+    capacityPerCycle: number;
+  }>>>();
+  for (const row of catalogRows) {
+    const buildingId = String(row.building_id);
+    const current = catalogByBuilding.get(buildingId) ?? [];
+    current.push({
+      id: String(row.id),
+      code: String(row.code),
+      title: String(row.title),
+      description: String(row.description),
+      category: String(row.category),
+      unitPriceMinor: Number(row.unit_price_minor),
+      capacityPerCycle: Number(row.capacity_per_cycle)
+    });
+    catalogByBuilding.set(buildingId, current);
+  }
+
+  return buildingRows.map((row) => ({
+    buildingId: String(row.id),
+    plotCode: String(row.plot_code),
+    companyId: String(row.company_id),
+    companyName: String(row.company_name),
+    ownerId: String(row.owner_id),
+    ownerName: String(row.owner_name),
+    buildingName: String(row.name),
+    buildingType: String(row.building_type),
+    level: Number(row.level),
+    condition: Number(row.condition),
+    capacity: Number(row.capacity),
+    reputationScore: Number(row.reputation_score),
+    reviewCount: Number(row.review_count),
+    recentWorldVisits: Number(row.recent_world_visits),
+    recentDemandVisitors: Number(row.recent_demand_visitors),
+    recentCustomers: Number(row.recent_customers),
+    recentRevenueMinor: Number(row.recent_revenue_minor),
+    catalog: catalogByBuilding.get(String(row.id)) ?? []
+  }));
+}
+
+async function worldBuilding(buildingId: string) {
+  const rows = await sql`
+    SELECT building.id,building.status,plot.code plot_code,location.code location_code,
+      company.id company_id,company.owner_id
+    FROM property_buildings building
+    JOIN property_plots plot ON plot.id=building.plot_id
+    JOIN city_locations location ON location.id=plot.location_id
+    JOIN companies company ON company.id=building.company_id
+    WHERE building.id=${buildingId}::uuid
+  `;
+  const row = rows[0];
+  if (!row || String(row.status) !== "active") {
+    throw new Error("Estabelecimento não está aberto.");
+  }
+  return {
+    buildingId: String(row.id),
+    plotCode: String(row.plot_code),
+    locationCode: String(row.location_code),
+    companyId: String(row.company_id),
+    ownerId: String(row.owner_id)
+  };
+}
+
 export async function registerWorldEconomyRoutes(app: FastifyInstance): Promise<void> {
   app.get("/v1/world/economy/context", async (request) => {
     const ownerId = await requireActorId(app, request);
@@ -85,6 +208,7 @@ export async function registerWorldEconomyRoutes(app: FastifyInstance): Promise<
     const itemRows = location.code === WORLD_MARKET_LOCATION
       ? await sql`SELECT code,name,base_price_minor FROM items ORDER BY name,code`
       : [];
+    const businesses = await localBusinesses(location.code);
 
     return {
       location,
@@ -107,14 +231,69 @@ export async function registerWorldEconomyRoutes(app: FastifyInstance): Promise<
         name: String(row.name),
         basePriceMinor: Number(row.base_price_minor)
       })),
+      localBusinesses: businesses,
       guidance: location.code === "green-cooperative"
         ? "A Cooperativa Agrícola transforma recursos alimentares em bens produzidos."
         : location.code === WORLD_MARKET_LOCATION
           ? "O Mercado Municipal conecta sua oferta ao livro público da cidade."
-          : "Explore a cidade para encontrar um ponto econômico compatível com a próxima ação.",
+          : businesses.length > 0
+            ? "Este local possui estabelecimentos ativos. Visite empresas ou, se for proprietário, atenda a demanda do distrito."
+            : "Explore a cidade para encontrar um ponto econômico compatível com a próxima ação.",
       signature: "Tehkné Solutions"
     };
   });
+
+  app.post<{ Params: { buildingId: string } }>(
+    "/v1/world/businesses/:buildingId/visit",
+    async (request) => {
+      const ownerId = await requireActorId(app, request);
+      const building = await worldBuilding(request.params.buildingId);
+      await assertLocation(app, ownerId, building.locationCode);
+      if (building.ownerId === ownerId) {
+        throw app.httpErrors.badRequest("O proprietário não registra visita na própria empresa.");
+      }
+      await propertyBusiness.visitProperty({
+        ownerId,
+        plotCode: building.plotCode,
+        idempotencyKey: idempotencyKey(app, request)
+      });
+      return {
+        visited: true,
+        buildingId: building.buildingId,
+        companyId: building.companyId,
+        plotCode: building.plotCode,
+        worldLocationCode: building.locationCode,
+        signature: "Tehkné Solutions"
+      };
+    }
+  );
+
+  app.post<{ Params: { buildingId: string } }>(
+    "/v1/world/businesses/:buildingId/demand-cycle",
+    async (request) => {
+      const ownerId = await requireActorId(app, request);
+      const building = await worldBuilding(request.params.buildingId);
+      await assertLocation(app, ownerId, building.locationCode);
+      if (building.ownerId !== ownerId) {
+        throw app.httpErrors.forbidden("Somente o proprietário pode atender a demanda deste estabelecimento.");
+      }
+      const state = await businessOperations.runDemandCycle({
+        ownerId,
+        buildingId: building.buildingId,
+        idempotencyKey: idempotencyKey(app, request)
+      });
+      const company = state.companies.find((candidate) =>
+        candidate.buildingId === building.buildingId
+      );
+      return {
+        attended: true,
+        buildingId: building.buildingId,
+        company: company ?? null,
+        worldLocationCode: building.locationCode,
+        signature: "Tehkné Solutions"
+      };
+    }
+  );
 
   const productionSchema = z.object({
     recipeCode: z.string().min(1).max(64),
