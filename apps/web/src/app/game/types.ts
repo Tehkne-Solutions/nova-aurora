@@ -49,6 +49,37 @@ export type CityState = Readonly<{
   }>;
 }>;
 
+export type WorldEconomyContext = Readonly<{
+  location: Readonly<{
+    code: string;
+    name: string;
+    locationType: string;
+    districtCode: string;
+    districtName: string;
+  }>;
+  capabilities: Readonly<{
+    canProduce: boolean;
+    canTrade: boolean;
+    allowedRecipeCodes: readonly string[];
+  }>;
+  recipes: readonly Readonly<{
+    code: string;
+    name: string;
+    outputItemCode: string;
+    outputItemName: string;
+    outputQuantityMinor: number;
+    durationSeconds: number;
+    energyCostMinor: number;
+  }>[];
+  marketItems: readonly Readonly<{
+    code: string;
+    name: string;
+    basePriceMinor: number;
+  }>[];
+  guidance: string;
+  signature: "Tehkné Solutions";
+}>;
+
 export type Npc = Readonly<{
   code: string;
   name: string;
@@ -74,3 +105,5 @@ export type ExperienceState = Readonly<{
   npcs: readonly Npc[];
   activeHarvest: HarvestSession | null;
 }>;
+
+// Tehkné Solutions
