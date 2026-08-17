@@ -1,6 +1,7 @@
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { z } from "zod";
 import { RegionalBusinessManagementService } from "@nova-aurora/database";
+import { requireActorId } from "./auth-context.js";
 
 const management = new RegionalBusinessManagementService();
 
@@ -10,16 +11,6 @@ function idempotencyKey(app: FastifyInstance, request: FastifyRequest): string {
     throw app.httpErrors.badRequest("Idempotency-Key obrigatório.");
   }
   return key;
-}
-
-async function actorId(app: FastifyInstance, request: FastifyRequest): Promise<string> {
-  const email = request.headers["x-actor-email"];
-  if (typeof email !== "string") {
-    throw app.httpErrors.unauthorized(
-      "Cabeçalho x-actor-email obrigatório no runtime de desenvolvimento."
-    );
-  }
-  return management.resolveUserId(email);
 }
 
 const supplierOfferSchema = z.object({
@@ -72,13 +63,13 @@ export async function registerRegionalBusinessManagementRoutes(
   app: FastifyInstance
 ): Promise<void> {
   app.get("/v1/management/state", async (request) =>
-    management.state(await actorId(app, request))
+    management.state(await requireActorId(app, request))
   );
 
   app.post("/v1/management/supplier-offers", async (request) => {
     const body = supplierOfferSchema.parse(request.body);
     return management.createSupplierOffer({
-      ownerId: await actorId(app, request),
+      ownerId: await requireActorId(app, request),
       ...body,
       idempotencyKey: idempotencyKey(app, request)
     });
@@ -89,7 +80,7 @@ export async function registerRegionalBusinessManagementRoutes(
     async (request) => {
       const body = acceptSupplierSchema.parse(request.body);
       return management.acceptSupplierOffer({
-        ownerId: await actorId(app, request),
+        ownerId: await requireActorId(app, request),
         offerId: request.params.offerId,
         ...body,
         idempotencyKey: idempotencyKey(app, request)
@@ -100,7 +91,7 @@ export async function registerRegionalBusinessManagementRoutes(
   app.post("/v1/management/campaigns", async (request) => {
     const body = campaignSchema.parse(request.body);
     return management.createCampaign({
-      ownerId: await actorId(app, request),
+      ownerId: await requireActorId(app, request),
       ...body,
       idempotencyKey: idempotencyKey(app, request)
     });
@@ -109,7 +100,7 @@ export async function registerRegionalBusinessManagementRoutes(
   app.post("/v1/management/goals", async (request) => {
     const body = goalSchema.parse(request.body);
     return management.createGoal({
-      ownerId: await actorId(app, request),
+      ownerId: await requireActorId(app, request),
       ...body,
       idempotencyKey: idempotencyKey(app, request)
     });
@@ -120,7 +111,7 @@ export async function registerRegionalBusinessManagementRoutes(
     async (request) => {
       const body = trainingSchema.parse(request.body);
       return management.trainEmployee({
-        ownerId: await actorId(app, request),
+        ownerId: await requireActorId(app, request),
         employmentId: request.params.employmentId,
         focus: body.focus,
         idempotencyKey: idempotencyKey(app, request)
@@ -131,7 +122,7 @@ export async function registerRegionalBusinessManagementRoutes(
   app.post("/v1/management/regional-cycles", async (request) => {
     const body = regionalCycleSchema.parse(request.body);
     return management.runRegionalCycle({
-      ownerId: await actorId(app, request),
+      ownerId: await requireActorId(app, request),
       ...body,
       idempotencyKey: idempotencyKey(app, request)
     });
@@ -140,9 +131,11 @@ export async function registerRegionalBusinessManagementRoutes(
   app.post<{ Params: { alertId: string } }>(
     "/v1/management/alerts/:alertId/acknowledge",
     async (request) => management.acknowledgeAlert({
-      ownerId: await actorId(app, request),
+      ownerId: await requireActorId(app, request),
       alertId: request.params.alertId,
       idempotencyKey: idempotencyKey(app, request)
     })
   );
 }
+
+// Tehkné Solutions
