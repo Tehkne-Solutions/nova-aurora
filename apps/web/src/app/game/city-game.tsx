@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useAuth } from "../auth-provider";
 import { CharacterSprite } from "./character-sprite";
 import { CityWorld } from "./city-world";
 import { EnvironmentControls } from "./environment-controls";
@@ -82,6 +83,7 @@ async function request<T>(
 }
 
 export function CityGame() {
+  const { identity } = useAuth();
   const [state, setState] = useState<CityState | null>(null);
   const [experience, setExperience] = useState<ExperienceState | null>(null);
   const [worldEconomy, setWorldEconomy] = useState<WorldEconomyContext | null>(null);
@@ -317,6 +319,22 @@ export function CityGame() {
     })
   );
 
+  const visitBusiness = (buildingId: string) => run(
+    "Registrando visita ao estabelecimento...",
+    () => request(`/v1/world/businesses/${buildingId}/visit`, {
+      method: "POST",
+      idempotencyKey: key("world-business-visit")
+    })
+  );
+
+  const attendDemand = (buildingId: string) => run(
+    "Atendendo demanda do distrito...",
+    () => request(`/v1/world/businesses/${buildingId}/demand-cycle`, {
+      method: "POST",
+      idempotencyKey: key("world-business-demand")
+    })
+  );
+
   const atCooperative = state.player.currentLocationCode === "green-cooperative";
   const atMarket = state.player.currentLocationCode === "municipal-market";
 
@@ -325,6 +343,7 @@ export function CityGame() {
       aria-label="Mundo econômico autenticado de Nova Aurora"
       className={`${styles.experienceRoot} ${settings.highContrast ? styles.highContrast : ""} ${settings.largeText ? styles.largeText : ""}`}
       data-authenticated="true"
+      data-local-businesses-count={worldEconomy.localBusinesses.length}
       data-world-location={worldEconomy.location.code}
     >
       <div className={styles.layout}>
@@ -463,6 +482,48 @@ export function CityGame() {
               <div className={styles.successBox}>
                 <strong>Cadeia concluída!</strong>
                 <span>Você produziu valor e realizou sua primeira venda real.</span>
+              </div>
+            )}
+          </section>
+
+          <section className={styles.inventoryCard} aria-label="Empresas locais de Nova Aurora">
+            <span>EMPRESAS NESTE LOCAL</span>
+            {worldEconomy.localBusinesses.length === 0 ? (
+              <p>Nenhum estabelecimento ativo neste ponto da cidade.</p>
+            ) : (
+              <div>
+                {worldEconomy.localBusinesses.map((business) => {
+                  const owned = business.ownerId === identity?.id;
+                  return (
+                    <article className={styles.successBox} key={business.buildingId}>
+                      <strong>{business.buildingName}</strong>
+                      <span>{business.companyName} · {business.buildingType} · nível {business.level}</span>
+                      <span>Reputação {business.reputationScore}/100 · {business.reviewCount} avaliações</span>
+                      <span>Visitas reais 7d: {business.recentWorldVisits}</span>
+                      <span>Demanda 7d: {business.recentCustomers} clientes · {aurora(business.recentRevenueMinor)}</span>
+                      {business.catalog.length > 0 ? (
+                        <span>
+                          Vitrine: {business.catalog.map((entry) => `${entry.title} · ${aurora(entry.unitPriceMinor)}`).join(" | ")}
+                        </span>
+                      ) : (
+                        <span>Sem vitrine pública configurada.</span>
+                      )}
+                      {owned ? (
+                        business.catalog.length > 0 ? (
+                          <button disabled={busy} onClick={() => void attendDemand(business.buildingId)}>
+                            Atender demanda do distrito
+                          </button>
+                        ) : (
+                          <Link href="/marketplace">Configurar vitrine no Marketplace</Link>
+                        )
+                      ) : (
+                        <button disabled={busy} onClick={() => void visitBusiness(business.buildingId)}>
+                          Visitar estabelecimento
+                        </button>
+                      )}
+                    </article>
+                  );
+                })}
               </div>
             )}
           </section>

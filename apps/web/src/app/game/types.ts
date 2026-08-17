@@ -49,6 +49,37 @@ export type CityState = Readonly<{
   }>;
 }>;
 
+export type WorldBusinessCatalogEntry = Readonly<{
+  id: string;
+  code: string;
+  title: string;
+  description: string;
+  category: string;
+  unitPriceMinor: number;
+  capacityPerCycle: number;
+}>;
+
+export type WorldLocalBusiness = Readonly<{
+  buildingId: string;
+  plotCode: string;
+  companyId: string;
+  companyName: string;
+  ownerId: string;
+  ownerName: string;
+  buildingName: string;
+  buildingType: string;
+  level: number;
+  condition: number;
+  capacity: number;
+  reputationScore: number;
+  reviewCount: number;
+  recentWorldVisits: number;
+  recentDemandVisitors: number;
+  recentCustomers: number;
+  recentRevenueMinor: number;
+  catalog: readonly WorldBusinessCatalogEntry[];
+}>;
+
 export type WorldEconomyContext = Readonly<{
   location: Readonly<{
     code: string;
@@ -76,6 +107,7 @@ export type WorldEconomyContext = Readonly<{
     name: string;
     basePriceMinor: number;
   }>[];
+  localBusinesses: readonly WorldLocalBusiness[];
   guidance: string;
   signature: "Tehkné Solutions";
 }>;

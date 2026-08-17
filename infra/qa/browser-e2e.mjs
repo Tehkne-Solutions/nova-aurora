@@ -162,17 +162,27 @@ async function waitForWorldEconomy(timeoutMs = 20_000) {
     const state = await evaluate(`(() => {
       const world = document.querySelector('[aria-label="Mundo econômico autenticado de Nova Aurora"][data-authenticated="true"]');
       const economy = document.querySelector('[aria-label="Economia local de Nova Aurora"]');
+      const businesses = document.querySelector('[aria-label="Empresas locais de Nova Aurora"]');
       return {
         found: Boolean(world),
         location: world?.getAttribute('data-world-location') || '',
+        localBusinessCount: world?.getAttribute('data-local-businesses-count') || '',
         worldText: world?.textContent?.trim() || '',
-        economyText: economy?.textContent?.trim() || ''
+        economyText: economy?.textContent?.trim() || '',
+        businessPanelFound: Boolean(businesses),
+        businessText: businesses?.textContent?.trim() || ''
       };
     })()`);
     if (!state.found) throw new Error("Mundo econômico autenticado ainda não foi materializado.");
     if (!state.location) throw new Error("Localização econômica atual não foi materializada.");
+    if (!/^\d+$/.test(String(state.localBusinessCount))) {
+      throw new Error(`Contagem de empresas locais inválida: ${state.localBusinessCount || "vazia"}.`);
+    }
     if (!String(state.economyText).includes("Economia local:")) {
       throw new Error("Contexto econômico local ainda não foi materializado.");
+    }
+    if (!state.businessPanelFound || !String(state.businessText).includes("EMPRESAS NESTE LOCAL")) {
+      throw new Error("Painel de empresas locais ainda não foi materializado.");
     }
     if (/alice@nova-aurora\.local|bob@nova-aurora\.local|Simular compra de Bob/i.test(String(state.worldText))) {
       throw new Error("Mundo econômico ainda contém identidade ou compra demo.");
@@ -310,7 +320,9 @@ for (const path of [
       world: {
         ready: true,
         location: state.location,
-        text: state.economyText.slice(0, 240)
+        localBusinessCount: Number(state.localBusinessCount),
+        text: state.economyText.slice(0, 240),
+        businessText: state.businessText.slice(0, 240)
       }
     };
   }
@@ -446,6 +458,7 @@ console.log(JSON.stringify({
   creatorStudioReady: report.creatorStudio?.ready ?? false,
   ugcStudioReady: report.ugcStudio?.ready ?? false,
   authenticatedWorldEconomyReady: report.economySurfaces?.world?.ready ?? false,
+  worldLocalBusinessesCount: report.economySurfaces?.world?.localBusinessCount ?? null,
   authenticatedBusinessReady: report.economySurfaces?.business?.ready ?? false,
   authenticatedMarketplaceReady: report.economySurfaces?.marketplace?.ready ?? false,
   marketProductionConsoleReady: report.economySurfaces?.marketProduction?.ready ?? false,
