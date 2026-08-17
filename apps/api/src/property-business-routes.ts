@@ -58,11 +58,20 @@ export async function registerPropertyBusinessRoutes(
 
   app.post<{ Params: { plotCode: string } }>(
     "/v1/properties/:plotCode/visit",
-    async (request) => business.visitProperty({
-      ownerId: await requireActorId(app, request),
-      plotCode: request.params.plotCode,
-      idempotencyKey: idempotencyKey(app, request)
-    })
+    async (request) => {
+      const ownerId = await requireActorId(app, request);
+      const state = await business.state(ownerId);
+      const plot = state.plots.find((candidate) => candidate.code === request.params.plotCode);
+      if (!plot?.building) throw app.httpErrors.badRequest("Estabelecimento não está aberto.");
+      if (plot.ownerCompanyId === state.company.id) {
+        throw app.httpErrors.badRequest("O proprietário não registra visita na própria empresa.");
+      }
+      return business.visitProperty({
+        ownerId,
+        plotCode: request.params.plotCode,
+        idempotencyKey: idempotencyKey(app, request)
+      });
+    }
   );
 
   app.post<{ Params: { buildingId: string } }>(
