@@ -62,7 +62,7 @@ export abstract class EconomyRepositoryBase {
     return result as T;
   }
 
-  protected async assertCurrentLocation(
+  protected async assertWorldLocation(
     tx: Tx,
     ownerId: string,
     expectedLocationCode: string
