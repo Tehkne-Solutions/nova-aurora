@@ -157,6 +157,30 @@ async function waitForAuthenticatedSurface(label, context, timeoutMs = 20_000) {
   }, timeoutMs);
 }
 
+async function waitForWorldEconomy(timeoutMs = 20_000) {
+  return retry(async () => {
+    const state = await evaluate(`(() => {
+      const world = document.querySelector('[aria-label="Mundo econômico autenticado de Nova Aurora"][data-authenticated="true"]');
+      const economy = document.querySelector('[aria-label="Economia local de Nova Aurora"]');
+      return {
+        found: Boolean(world),
+        location: world?.getAttribute('data-world-location') || '',
+        worldText: world?.textContent?.trim() || '',
+        economyText: economy?.textContent?.trim() || ''
+      };
+    })()`);
+    if (!state.found) throw new Error("Mundo econômico autenticado ainda não foi materializado.");
+    if (!state.location) throw new Error("Localização econômica atual não foi materializada.");
+    if (!String(state.economyText).includes("Economia local:")) {
+      throw new Error("Contexto econômico local ainda não foi materializado.");
+    }
+    if (/alice@nova-aurora\.local|bob@nova-aurora\.local|Simular compra de Bob/i.test(String(state.worldText))) {
+      throw new Error("Mundo econômico ainda contém identidade ou compra demo.");
+    }
+    return state;
+  }, timeoutMs);
+}
+
 async function waitForMarketProductionConsole(timeoutMs = 20_000) {
   return retry(async () => {
     const state = await evaluate(`(() => {
@@ -267,6 +291,7 @@ for (const path of [
   "/trust",
   "/feedback",
   "/beta-insights",
+  "/game",
   "/business",
   "/marketplace",
   "/dashboard",
@@ -277,6 +302,18 @@ for (const path of [
 ]) {
   await navigate(path);
 
+  if (path === "/game") {
+    await waitForHeading("h1", "Construa sua primeira cadeia de valor", "Mundo jogável");
+    const state = await waitForWorldEconomy();
+    report.economySurfaces = {
+      ...(report.economySurfaces ?? {}),
+      world: {
+        ready: true,
+        location: state.location,
+        text: state.economyText.slice(0, 240)
+      }
+    };
+  }
   if (path === "/business") {
     await waitForHeading("h1", "Transforme um endereço", "Economia empresarial");
     const state = await waitForAuthenticatedSurface(
@@ -380,7 +417,8 @@ await writeFile(reportFile, JSON.stringify(finalReport, null, 2));
 if (issues.length > 0) throw new Error(`Falhas de acessibilidade: ${issues.join("; ")}`);
 if (exceptions.length > 0) throw new Error(`Exceções no navegador: ${exceptions.join("; ")}`);
 if (
-  !report.economySurfaces?.business?.ready
+  !report.economySurfaces?.world?.ready
+  || !report.economySurfaces?.business?.ready
   || !report.economySurfaces?.marketplace?.ready
   || !report.economySurfaces?.marketProduction?.ready
   || !report.economySurfaces?.dashboard?.ready
@@ -407,6 +445,7 @@ console.log(JSON.stringify({
   socialHubTabs: report.socialHub?.tabs.length ?? 0,
   creatorStudioReady: report.creatorStudio?.ready ?? false,
   ugcStudioReady: report.ugcStudio?.ready ?? false,
+  authenticatedWorldEconomyReady: report.economySurfaces?.world?.ready ?? false,
   authenticatedBusinessReady: report.economySurfaces?.business?.ready ?? false,
   authenticatedMarketplaceReady: report.economySurfaces?.marketplace?.ready ?? false,
   marketProductionConsoleReady: report.economySurfaces?.marketProduction?.ready ?? false,
