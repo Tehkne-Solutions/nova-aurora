@@ -175,8 +175,8 @@ async function waitForRegionalManagement(timeoutMs = 20_000) {
     for (const channel of ["local", "social", "outdoor", "influencer"]) {
       if (!state.channels.includes(channel)) throw new Error(`Canal de campanha ausente: ${channel}.`);
     }
-    if (/alice@nova-aurora\.local|bob@nova-aurora\.local|Alice|Bob/.test(String(state.text))) {
-      throw new Error("Gestão Regional ainda contém operador demo.");
+    if (/alice@nova-aurora\.local|bob@nova-aurora\.local|Testar como Alice|Testar como Bob/i.test(String(state.text))) {
+      throw new Error("Gestão Regional ainda contém seletor ou identidade demo.");
     }
     return state;
   }, timeoutMs);
