@@ -157,6 +157,31 @@ async function waitForAuthenticatedSurface(label, context, timeoutMs = 20_000) {
   }, timeoutMs);
 }
 
+async function waitForRegionalManagement(timeoutMs = 20_000) {
+  return retry(async () => {
+    const state = await evaluate(`(() => {
+      const node = document.querySelector('[aria-label="Gestão regional autenticada de Nova Aurora"][data-authenticated="true"]');
+      const channelSelect = node ? [...node.querySelectorAll('select')].find((select) =>
+        [...select.options].some((option) => option.value === 'influencer')
+      ) : null;
+      return {
+        found: Boolean(node),
+        text: node?.textContent?.trim() || '',
+        channels: channelSelect ? [...channelSelect.options].map((option) => option.value) : []
+      };
+    })()`);
+    if (!state.found) throw new Error("Gestão Regional autenticada ainda não foi materializada.");
+    if (!String(state.text).includes("Operador autenticado")) throw new Error("Operador autenticado não foi materializado.");
+    for (const channel of ["local", "social", "outdoor", "influencer"]) {
+      if (!state.channels.includes(channel)) throw new Error(`Canal de campanha ausente: ${channel}.`);
+    }
+    if (/alice@nova-aurora\.local|bob@nova-aurora\.local|Alice|Bob/.test(String(state.text))) {
+      throw new Error("Gestão Regional ainda contém operador demo.");
+    }
+    return state;
+  }, timeoutMs);
+}
+
 async function waitForWorldEconomy(timeoutMs = 20_000) {
   return retry(async () => {
     const state = await evaluate(`(() => {
@@ -167,6 +192,7 @@ async function waitForWorldEconomy(timeoutMs = 20_000) {
         found: Boolean(world),
         location: world?.getAttribute('data-world-location') || '',
         localBusinessCount: world?.getAttribute('data-local-businesses-count') || '',
+        activeCampaignCount: world?.getAttribute('data-active-campaigns-count') || '',
         worldText: world?.textContent?.trim() || '',
         economyText: economy?.textContent?.trim() || '',
         businessPanelFound: Boolean(businesses),
@@ -177,6 +203,9 @@ async function waitForWorldEconomy(timeoutMs = 20_000) {
     if (!state.location) throw new Error("Localização econômica atual não foi materializada.");
     if (!/^\d+$/.test(String(state.localBusinessCount))) {
       throw new Error(`Contagem de empresas locais inválida: ${state.localBusinessCount || "vazia"}.`);
+    }
+    if (!/^\d+$/.test(String(state.activeCampaignCount))) {
+      throw new Error(`Contagem de campanhas ativas inválida: ${state.activeCampaignCount || "vazia"}.`);
     }
     if (!String(state.economyText).includes("Economia local:")) {
       throw new Error("Contexto econômico local ainda não foi materializado.");
@@ -256,6 +285,7 @@ const report = {
   socialHub: null,
   creatorStudio: null,
   ugcStudio: null,
+  regionalManagement: null,
   economySurfaces: null,
   exceptions
 };
@@ -303,6 +333,7 @@ for (const path of [
   "/beta-insights",
   "/game",
   "/business",
+  "/management",
   "/marketplace",
   "/dashboard",
   "/community",
@@ -321,6 +352,7 @@ for (const path of [
         ready: true,
         location: state.location,
         localBusinessCount: Number(state.localBusinessCount),
+        activeCampaignCount: Number(state.activeCampaignCount),
         text: state.economyText.slice(0, 240),
         businessText: state.businessText.slice(0, 240)
       }
@@ -333,6 +365,15 @@ for (const path of [
       "Economia empresarial"
     );
     report.economySurfaces = { ...(report.economySurfaces ?? {}), business: { ready: true, text: state.text.slice(0, 240) } };
+  }
+  if (path === "/management") {
+    await waitForHeading("h1", "Administre a empresa", "Gestão Regional");
+    const state = await waitForRegionalManagement();
+    report.regionalManagement = {
+      ready: true,
+      channels: state.channels,
+      text: state.text.slice(0, 240)
+    };
   }
   if (path === "/marketplace") {
     await waitForHeading("h1", "Empresas abertas", "Marketplace público");
@@ -429,7 +470,8 @@ await writeFile(reportFile, JSON.stringify(finalReport, null, 2));
 if (issues.length > 0) throw new Error(`Falhas de acessibilidade: ${issues.join("; ")}`);
 if (exceptions.length > 0) throw new Error(`Exceções no navegador: ${exceptions.join("; ")}`);
 if (
-  !report.economySurfaces?.world?.ready
+  !report.regionalManagement?.ready
+  || !report.economySurfaces?.world?.ready
   || !report.economySurfaces?.business?.ready
   || !report.economySurfaces?.marketplace?.ready
   || !report.economySurfaces?.marketProduction?.ready
@@ -457,8 +499,10 @@ console.log(JSON.stringify({
   socialHubTabs: report.socialHub?.tabs.length ?? 0,
   creatorStudioReady: report.creatorStudio?.ready ?? false,
   ugcStudioReady: report.ugcStudio?.ready ?? false,
+  regionalManagementReady: report.regionalManagement?.ready ?? false,
   authenticatedWorldEconomyReady: report.economySurfaces?.world?.ready ?? false,
   worldLocalBusinessesCount: report.economySurfaces?.world?.localBusinessCount ?? null,
+  worldActiveCampaignsCount: report.economySurfaces?.world?.activeCampaignCount ?? null,
   authenticatedBusinessReady: report.economySurfaces?.business?.ready ?? false,
   authenticatedMarketplaceReady: report.economySurfaces?.marketplace?.ready ?? false,
   marketProductionConsoleReady: report.economySurfaces?.marketProduction?.ready ?? false,
