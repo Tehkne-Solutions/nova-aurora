@@ -68,7 +68,7 @@ async function assertLocation(
 }
 
 async function localBusinesses(locationCode: string) {
-  const [buildingRows, catalogRows] = await Promise.all([
+  const [buildingRows, catalogRows, campaignRows] = await Promise.all([
     sql`
       SELECT building.id,building.name,building.building_type,building.level,
         building.condition,building.capacity,building.status,
@@ -111,6 +111,20 @@ async function localBusinesses(locationCode: string) {
       JOIN city_locations location ON location.id=plot.location_id
       WHERE location.code=${locationCode} AND catalog.status='active'
       ORDER BY catalog.title,catalog.id
+    `,
+    sql`
+      SELECT campaign.id,campaign.building_id,campaign.name,campaign.channel,
+        campaign.budget_minor,campaign.visitor_boost_pct,campaign.conversions,
+        campaign.attributed_revenue_minor,campaign.status,campaign.starts_at,campaign.ends_at
+      FROM marketing_campaigns campaign
+      JOIN property_buildings building ON building.id=campaign.building_id
+      JOIN property_plots plot ON plot.id=building.plot_id
+      JOIN city_locations location ON location.id=plot.location_id
+      WHERE location.code=${locationCode}
+        AND campaign.status='active'
+        AND campaign.starts_at<=now()
+        AND campaign.ends_at>now()
+      ORDER BY campaign.visitor_boost_pct DESC,campaign.starts_at DESC,campaign.id
     `
   ]);
 
@@ -138,6 +152,35 @@ async function localBusinesses(locationCode: string) {
     catalogByBuilding.set(buildingId, current);
   }
 
+  const campaignsByBuilding = new Map<string, Array<Readonly<{
+    id: string;
+    name: string;
+    channel: string;
+    budgetMinor: number;
+    visitorBoostPct: number;
+    conversions: number;
+    attributedRevenueMinor: number;
+    endsAt: string;
+    worldPlacement: boolean;
+  }>>>();
+  for (const row of campaignRows) {
+    const buildingId = String(row.building_id);
+    const channel = String(row.channel);
+    const current = campaignsByBuilding.get(buildingId) ?? [];
+    current.push({
+      id: String(row.id),
+      name: String(row.name),
+      channel,
+      budgetMinor: Number(row.budget_minor),
+      visitorBoostPct: Number(row.visitor_boost_pct),
+      conversions: Number(row.conversions),
+      attributedRevenueMinor: Number(row.attributed_revenue_minor),
+      endsAt: new Date(String(row.ends_at)).toISOString(),
+      worldPlacement: channel === "local" || channel === "outdoor"
+    });
+    campaignsByBuilding.set(buildingId, current);
+  }
+
   return buildingRows.map((row) => ({
     buildingId: String(row.id),
     plotCode: String(row.plot_code),
@@ -156,7 +199,8 @@ async function localBusinesses(locationCode: string) {
     recentDemandVisitors: Number(row.recent_demand_visitors),
     recentCustomers: Number(row.recent_customers),
     recentRevenueMinor: Number(row.recent_revenue_minor),
-    catalog: catalogByBuilding.get(String(row.id)) ?? []
+    catalog: catalogByBuilding.get(String(row.id)) ?? [],
+    activeCampaigns: campaignsByBuilding.get(String(row.id)) ?? []
   }));
 }
 
