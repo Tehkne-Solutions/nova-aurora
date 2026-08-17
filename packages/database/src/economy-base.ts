@@ -62,6 +62,24 @@ export abstract class EconomyRepositoryBase {
     return result as T;
   }
 
+  protected async assertCurrentLocation(
+    tx: Tx,
+    ownerId: string,
+    expectedLocationCode: string
+  ): Promise<void> {
+    const rows = await tx`
+      SELECT location.code
+      FROM player_world_state state
+      JOIN city_locations location ON location.id=state.location_id
+      WHERE state.user_id=${ownerId}::uuid
+      FOR UPDATE OF state
+    `;
+    const current = String(rows[0]?.code ?? "");
+    if (current !== expectedLocationCode) {
+      throw new Error(`Viaje até ${expectedLocationCode} para realizar esta ação no mundo.`);
+    }
+  }
+
   protected async reserveInventory(tx: Tx, input: {
     ownerId: string;
     itemId: string;
