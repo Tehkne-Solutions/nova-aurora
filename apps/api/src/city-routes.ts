@@ -1,6 +1,7 @@
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { z } from "zod";
 import { CityGameplayService } from "@nova-aurora/database";
+import { requireActorId } from "./auth-context.js";
 
 const city = new CityGameplayService();
 
@@ -12,19 +13,9 @@ function idempotencyKey(app: FastifyInstance, request: FastifyRequest): string {
   return key;
 }
 
-async function actorId(app: FastifyInstance, request: FastifyRequest): Promise<string> {
-  const email = request.headers["x-actor-email"];
-  if (typeof email !== "string") {
-    throw app.httpErrors.unauthorized(
-      "Cabeçalho x-actor-email obrigatório no runtime de desenvolvimento."
-    );
-  }
-  return city.resolveUserId(email);
-}
-
 export async function registerCityRoutes(app: FastifyInstance): Promise<void> {
   app.get("/v1/city/state", async (request) =>
-    city.state(await actorId(app, request))
+    city.state(await requireActorId(app, request))
   );
 
   const moveSchema = z.object({
@@ -34,7 +25,7 @@ export async function registerCityRoutes(app: FastifyInstance): Promise<void> {
   app.post("/v1/city/move", async (request) => {
     const body = moveSchema.parse(request.body);
     return city.movePlayer({
-      ownerId: await actorId(app, request),
+      ownerId: await requireActorId(app, request),
       locationCode: body.locationCode,
       idempotencyKey: idempotencyKey(app, request)
     });
@@ -43,7 +34,7 @@ export async function registerCityRoutes(app: FastifyInstance): Promise<void> {
   app.post<{ Params: { jobCode: string } }>(
     "/v1/jobs/:jobCode/accept",
     async (request) => city.acceptJob({
-      ownerId: await actorId(app, request),
+      ownerId: await requireActorId(app, request),
       jobCode: request.params.jobCode,
       idempotencyKey: idempotencyKey(app, request)
     })
@@ -52,9 +43,11 @@ export async function registerCityRoutes(app: FastifyInstance): Promise<void> {
   app.post<{ Params: { jobCode: string } }>(
     "/v1/jobs/:jobCode/complete",
     async (request) => city.completeJob({
-      ownerId: await actorId(app, request),
+      ownerId: await requireActorId(app, request),
       jobCode: request.params.jobCode,
       idempotencyKey: idempotencyKey(app, request)
     })
   );
 }
+
+// Tehkné Solutions
