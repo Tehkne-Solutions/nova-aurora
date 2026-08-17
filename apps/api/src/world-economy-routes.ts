@@ -68,17 +68,20 @@ export async function registerWorldEconomyRoutes(app: FastifyInstance): Promise<
       .filter(([, requiredLocationCode]) => requiredLocationCode === location.code)
       .map(([recipeCode]) => recipeCode);
 
-    const recipeRows = allowedRecipeCodes.length > 0
+    const allActiveRecipeRows = allowedRecipeCodes.length > 0
       ? await sql`
           SELECT recipe.code,recipe.name,recipe.output_quantity_minor,
             recipe.duration_seconds,recipe.energy_cost_minor,
             item.code output_item_code,item.name output_item_name
           FROM production_recipes recipe
           JOIN items item ON item.id=recipe.output_item_id
-          WHERE recipe.active=true AND recipe.code=ANY(${allowedRecipeCodes})
+          WHERE recipe.active=true
           ORDER BY recipe.name,recipe.code
         `
       : [];
+    const recipeRows = allActiveRecipeRows.filter((row) =>
+      allowedRecipeCodes.includes(String(row.code))
+    );
     const itemRows = location.code === WORLD_MARKET_LOCATION
       ? await sql`SELECT code,name,base_price_minor FROM items ORDER BY name,code`
       : [];
