@@ -61,6 +61,13 @@ function npcVariant(avatar: string): "mara" | "joao" | "lina" {
   return "mara";
 }
 
+function campaignChannelLabel(channel: string): string {
+  if (channel === "local") return "mídia local";
+  if (channel === "social") return "mídia social";
+  if (channel === "outdoor") return "mídia urbana";
+  return "criadores e influenciadores";
+}
+
 async function request<T>(
   path: string,
   options: Readonly<{
@@ -237,6 +244,10 @@ export function CityGame() {
     state.onboarding.steps.find((item) => item.code === code)?.completed ?? false;
   const visibleNpc = experience.npcs[0] ?? null;
   const phase = resolveTimePhase(settings.time);
+  const activeCampaignCount = worldEconomy.localBusinesses.reduce(
+    (sum, business) => sum + business.activeCampaigns.length,
+    0
+  );
   const directionalMove = (direction: Facing) => {
     const destination = nextLocationByDirection(
       locations,
@@ -342,6 +353,7 @@ export function CityGame() {
     <div
       aria-label="Mundo econômico autenticado de Nova Aurora"
       className={`${styles.experienceRoot} ${settings.highContrast ? styles.highContrast : ""} ${settings.largeText ? styles.largeText : ""}`}
+      data-active-campaigns-count={activeCampaignCount}
       data-authenticated="true"
       data-local-businesses-count={worldEconomy.localBusinesses.length}
       data-world-location={worldEconomy.location.code}
@@ -508,6 +520,11 @@ export function CityGame() {
                       ) : (
                         <span>Sem vitrine pública configurada.</span>
                       )}
+                      {business.activeCampaigns.map((campaign) => (
+                        <span key={campaign.id}>
+                          {campaign.worldPlacement ? "PROMOVIDO NO MUNDO" : "CAMPANHA DIGITAL"}: {campaign.name} · {campaignChannelLabel(campaign.channel)} · +{campaign.visitorBoostPct}% visitantes · {campaign.conversions} conversões
+                        </span>
+                      ))}
                       {owned ? (
                         business.catalog.length > 0 ? (
                           <button disabled={busy} onClick={() => void attendDemand(business.buildingId)}>
