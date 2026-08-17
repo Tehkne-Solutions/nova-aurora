@@ -4,10 +4,6 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import styles from "./management.module.css";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
-const ALICE = "alice@nova-aurora.local";
-const BOB = "bob@nova-aurora.local";
-
-type ActorMode = "alice" | "bob";
 
 type Stock = Readonly<{
   buildingId: string;
@@ -43,12 +39,14 @@ type Contract = Readonly<{
   createdAt: string;
 }>;
 
+type CampaignChannel = "local" | "social" | "outdoor" | "influencer";
+
 type Campaign = Readonly<{
   id: string;
   buildingId: string;
   buildingName: string;
   name: string;
-  channel: string;
+  channel: CampaignChannel;
   budgetMinor: number;
   visitorBoostPct: number;
   conversions: number;
@@ -130,28 +128,35 @@ function key(prefix: string): string {
   return `${prefix}:${crypto.randomUUID()}`;
 }
 
+function channelLabel(channel: CampaignChannel): string {
+  if (channel === "local") return "Mídia local";
+  if (channel === "social") return "Mídia social";
+  if (channel === "outdoor") return "Mídia urbana";
+  return "Criadores e influenciadores";
+}
+
 export function RegionalManagementGame() {
-  const [mode, setMode] = useState<ActorMode>("alice");
   const [state, setState] = useState<RegionalState | null>(null);
   const [busy, setBusy] = useState(false);
-  const [message, setMessage] = useState("Carregando gestão regional…");
-
-  const actorEmail = mode === "alice" ? ALICE : BOB;
+  const [message, setMessage] = useState("Carregando gestão regional autenticada…");
+  const [campaignChannel, setCampaignChannel] = useState<CampaignChannel>("local");
 
   const load = useCallback(async () => {
     try {
       const response = await fetch(`${API_URL}/v1/management/state`, {
-        cache: "no-store",
-        headers: { "x-actor-email": actorEmail }
+        cache: "no-store"
       });
-      if (!response.ok) throw new Error(await response.text());
-      setState(await response.json() as RegionalState);
-      setMessage("Gestão sincronizada com PostgreSQL.");
-    } catch {
+      const payload = await response.json() as RegionalState | { message?: string };
+      if (!response.ok) {
+        throw new Error("message" in payload ? payload.message : "Gestão regional indisponível.");
+      }
+      setState(payload as RegionalState);
+      setMessage("Gestão regional sincronizada com sua sessão e o ledger da cidade.");
+    } catch (error) {
       setState(null);
-      setMessage("API indisponível. Inicie banco, migrations e serviços.");
+      setMessage(error instanceof Error ? error.message : "API de gestão regional indisponível.");
     }
-  }, [actorEmail]);
+  }, []);
 
   useEffect(() => {
     void load();
@@ -168,7 +173,6 @@ export function RegionalManagementGame() {
         method: "POST",
         headers: {
           "content-type": "application/json",
-          "x-actor-email": actorEmail,
           "idempotency-key": key(actionKey)
         },
         body: JSON.stringify(body)
@@ -184,7 +188,7 @@ export function RegionalManagementGame() {
     } finally {
       setBusy(false);
     }
-  }, [actorEmail]);
+  }, []);
 
   const ownStock = state?.stocks[0];
   const externalOffer = useMemo(
@@ -206,32 +210,25 @@ export function RegionalManagementGame() {
   }
 
   return (
-    <div className={styles.workspace}>
+    <div
+      aria-label="Gestão regional autenticada de Nova Aurora"
+      className={styles.workspace}
+      data-authenticated="true"
+    >
       <section className={styles.toolbar}>
         <div>
-          <span>Operador</span>
+          <span>Operador autenticado</span>
           <strong>{state.actor.displayName}</strong>
         </div>
-        <div className={styles.switcher}>
-          <button
-            type="button"
-            aria-pressed={mode === "alice"}
-            onClick={() => setMode("alice")}
-          >
-            Alice
-          </button>
-          <button
-            type="button"
-            aria-pressed={mode === "bob"}
-            onClick={() => setMode("bob")}
-          >
-            Bob
-          </button>
+        <div>
+          <span>Empresa</span>
+          <strong>{state.company.name}</strong>
         </div>
         <div>
           <span>Caixa empresarial</span>
           <strong>{aurora(state.company.accountBalanceMinor)}</strong>
         </div>
+        <button type="button" disabled={busy} onClick={() => void load()}>Atualizar</button>
       </section>
 
       <p className={styles.message} aria-live="polite">{message}</p>
@@ -268,10 +265,8 @@ export function RegionalManagementGame() {
               onClick={() => void action(
                 "/v1/management/supplier-offers",
                 {
-                  itemCode: mode === "alice" ? "bakery-inputs" : "retail-inputs",
-                  title: mode === "alice"
-                    ? "Insumos de panificação"
-                    : "Lote de mercadorias",
+                  itemCode: "operational-supply",
+                  title: "Lote de suprimentos empresariais",
                   category: "food",
                   unitCostMinor: 300,
                   minimumQuantity: 5,
@@ -319,19 +314,32 @@ export function RegionalManagementGame() {
               Comprar de {externalOffer.supplierCompanyName}
             </button>
           ) : (
-            <small>Alterne o operador para publicar e contratar ofertas entre empresas.</small>
+            <small>Ofertas B2B de outras empresas aparecerão aqui quando estiverem disponíveis.</small>
           )}
         </article>
 
         <article className={styles.panel}>
           <header>
             <div>
-              <span className={styles.label}>CRESCIMENTO</span>
+              <span className={styles.label}>CRESCIMENTO E MÍDIA</span>
               <h2>Campanhas e metas</h2>
             </div>
           </header>
 
           <div className={styles.actionRow}>
+            <label>
+              Canal da campanha
+              <select
+                disabled={busy}
+                value={campaignChannel}
+                onChange={(event) => setCampaignChannel(event.target.value as CampaignChannel)}
+              >
+                <option value="local">Mídia local</option>
+                <option value="social">Mídia social</option>
+                <option value="outdoor">Mídia urbana</option>
+                <option value="influencer">Criadores e influenciadores</option>
+              </select>
+            </label>
             <button
               type="button"
               disabled={busy || !ownStock}
@@ -339,8 +347,8 @@ export function RegionalManagementGame() {
                 "/v1/management/campaigns",
                 {
                   buildingId: ownStock.buildingId,
-                  name: "Campanha do Distrito",
-                  channel: "local",
+                  name: `${channelLabel(campaignChannel)} · ${ownStock.buildingName}`,
+                  channel: campaignChannel,
                   budgetMinor: 3000,
                   visitorBoostPct: 30,
                   durationDays: 7
@@ -348,7 +356,7 @@ export function RegionalManagementGame() {
                 "campaign"
               )}
             >
-              Iniciar campanha
+              Iniciar campanha · 30,00 CA
             </button>
             <button
               type="button"
@@ -379,11 +387,11 @@ export function RegionalManagementGame() {
               </div>
             </div>
           ))}
-          {state.campaigns.slice(0, 3).map((campaign) => (
+          {state.campaigns.slice(0, 5).map((campaign) => (
             <div className={styles.itemCard} key={campaign.id}>
               <div>
                 <strong>{campaign.name}</strong>
-                <span>{campaign.channel} · +{campaign.visitorBoostPct}%</span>
+                <span>{channelLabel(campaign.channel)} · +{campaign.visitorBoostPct}% visitantes</span>
               </div>
               <b>{campaign.conversions} conversões</b>
               <small>{aurora(campaign.attributedRevenueMinor)} atribuídos</small>
@@ -509,6 +517,10 @@ export function RegionalManagementGame() {
           {!activeAlert && <p>Nenhum alerta operacional aberto.</p>}
         </article>
       </section>
+
+      <footer>Tehkné Solutions</footer>
     </div>
   );
 }
+
+// Tehkné Solutions
